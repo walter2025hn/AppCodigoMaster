@@ -11,6 +11,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -55,7 +58,7 @@ private val Gold = Color(0xFFFFC84A)
 private val Blue = Color(0xFF42B9FF)
 private val Muted = Color(0xFF9AAEC9)
 
-data class Entry(val name: String, val url: String, val group: String, val logo: String, val tvgId: String)
+data class Entry(val name: String, val url: String, val group: String, val logo: String, val tvgId: String, val attributes: String = "")
 data class Series(val title: String, val episodes: List<Entry>, val poster: String, val group: String)
 enum class Kind { LIVE, MOVIE, SERIES, OTHER }
 
@@ -179,18 +182,22 @@ private fun SearchBox(value: String, onValue: (String) -> Unit) {
 @Composable
 private fun Navigation(current: String, onSelect: (String) -> Unit) {
     val tabs = listOf("Inicio" to Icons.Default.Home, "TV" to Icons.Default.LiveTv, "Películas" to Icons.Default.Movie, "Series" to Icons.Default.Tv)
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
         tabs.forEach { (name, icon) ->
             val active = current == name
-            Row(
-                Modifier.clip(RoundedCornerShape(12.dp))
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(13.dp))
                     .background(if (active) Gold else Panel)
-                    .clickable { onSelect(name) }.padding(horizontal = 15.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clickable { onSelect(name) }
+                    .padding(vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(icon, null, tint = if (active) Navy else Muted, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(7.dp))
-                Text(name, color = if (active) Navy else Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Icon(icon, null, tint = if (active) Navy else Muted, modifier = Modifier.size(19.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(name, color = if (active) Navy else Color.White, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, maxLines = 1)
             }
         }
     }
@@ -283,10 +290,25 @@ private fun MediaList(items: List<Entry>, title: String, empty: String, onPlay: 
 @Composable
 private fun PosterGrid(items: List<Entry>, title: String, onPlay: (Entry) -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        Text("$title  •  ${items.size}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
+        Text("$title  •  ${items.size}", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
         if (items.isEmpty()) EmptyState("No se encontraron películas")
-        else LazyColumn(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            items(items) { e -> MediaRow(e.name, e.group, e.logo, onClick = { onPlay(e) }) }
+        else LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            gridItems(items, key = { it.url }) { e ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Panel).clickable { onPlay(e) }.padding(9.dp)) {
+                    Poster(e.logo, Modifier.fillMaxWidth().aspectRatio(0.70f))
+                    Spacer(Modifier.height(8.dp))
+                    Text(e.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
+                    Text(e.group, color = Muted, fontSize = 10.sp, maxLines = 1)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Icon(Icons.Default.PlayCircleFilled, null, tint = Gold, modifier = Modifier.size(25.dp))
+                    }
+                }
+            }
         }
     }
 }
@@ -294,10 +316,22 @@ private fun PosterGrid(items: List<Entry>, title: String, onPlay: (Entry) -> Uni
 @Composable
 private fun SeriesGrid(items: List<Series>, onSelect: (Series) -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        Text("Series  •  ${items.size}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
+        Text("Series  •  ${items.size}", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
         if (items.isEmpty()) EmptyState("No se encontraron series")
-        else LazyColumn(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            items(items) { s -> MediaRow(s.title, "${s.episodes.size} episodios", s.poster, onClick = { onSelect(s) }) }
+        else LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            gridItems(items, key = { it.title }) { series ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Panel).clickable { onSelect(series) }.padding(9.dp)) {
+                    Poster(series.poster, Modifier.fillMaxWidth().aspectRatio(0.70f))
+                    Spacer(Modifier.height(8.dp))
+                    Text(series.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
+                    Text("${series.episodes.size} episodios", color = Muted, fontSize = 10.sp)
+                }
+            }
         }
     }
 }
@@ -374,21 +408,49 @@ private fun PlayerViewScreen(entry: Entry, onBack: () -> Unit) {
 }
 
 private fun classify(e: Entry): Kind {
-    val group = e.group.lowercase(Locale.ROOT)
-    val name = e.name.lowercase(Locale.ROOT)
-    val combined = "$group $name"
-    val seriesPattern = Regex("""(?i)(s\d{1,2}\s*e\d{1,2}|temporada\s*\d+|cap[ií]tulo\s*\d+|episodio\s*\d+)""")
-    if (seriesPattern.containsMatchIn(e.name) || group.contains("serie") || group.contains("series")) return Kind.SERIES
-    if (listOf("pelicula", "película", "peliculas", "movies", "movie", "vod", "cine", "films").any { group.contains(it) }) return Kind.MOVIE
-    if (listOf("live", "tv", "canal", "channels", "deportes", "noticias", "infantil", "musica", "música").any { group.contains(it) }) return Kind.LIVE
-    if (e.tvgId.isNotBlank() || group.contains("general") || group.contains("nacional")) return Kind.LIVE
-    if (Regex("""(?i)\b(19|20)\d{2}\b""").containsMatchIn(name) &&
-        listOf("1080p", "720p", "4k", "bluray", "web-dl", "hdrip").any { name.contains(it) }) return Kind.MOVIE
+    val name = normalize(e.name)
+    val group = normalize(e.group)
+    val attrs = normalize(e.attributes)
+    val url = e.url.lowercase(Locale.ROOT)
+
+    // The provider's URL paths are the most reliable signal in this playlist.
+    if (url.contains("/series/")) return Kind.SERIES
+    if (url.contains("/movie/") || url.contains("/movies/")) return Kind.MOVIE
+
+    // Episodic markers are the strongest signal and take priority over generic group names.
+    val episodePattern = Regex("""\b(s\d{1,2}\s*e\d{1,3}|\d{1,2}x\d{1,3}|t\d{1,2}\s*e\d{1,3}|temporada\s*\d+|capitulo\s*\d+|episodio\s*\d+)\b""")
+    if (episodePattern.containsMatchIn(name) || listOf("serie", "series", "tv shows", "temporadas").any { group.contains(it) }) return Kind.SERIES
+
+    // Explicit VOD/movie metadata and movie-specific categories.
+    val movieGroups = listOf("pelicula", "peliculas", "movies", "movie", "vod", "cine", "films", "film", "estrenos")
+    val movieAttrs = listOf("type=movie", "tvg-type=movie", "content-type=movie", "media-type=movie", "vod=true")
+    if (movieGroups.any { group.contains(it) } || movieAttrs.any { attrs.contains(it) }) return Kind.MOVIE
+
+    val year = Regex("""\b(19\d{2}|20\d{2})\b""").containsMatchIn(name)
+    val quality = listOf("1080p", "720p", "2160p", "4k", "bluray", "blu-ray", "web-dl", "webrip", "hdrip", "hdtv", "hevc", "x264", "x265").any { name.contains(it) || url.contains(it) }
+    val movieWords = listOf("la comunidad del anillo", "las dos torres", "el retorno del rey", "la guerra de los rohirrim", "el hobbit", "avengers", "spider-man", "batman", "jurassic", "harry potter", "rapidos y furiosos", "rapidos", "mision imposible", "toy story", "shrek", "avatar", "matrix", "gladiador", "titanic")
+    val genreGroups = listOf("fantasia", "accion", "aventura", "drama", "comedia", "terror", "animacion", "romance", "ciencia ficcion", "documental", "suspenso", "thriller")
+    val hasGenre = genreGroups.any { group.contains(it) }
+    val explicitLiveGroup = listOf("canales", "canal", "en vivo", "live", "deportes en vivo", "noticias en vivo", "radio", "iptv live").any { group.contains(it) }
+    val channelName = listOf("espn", "fox sports", "discovery", "national geographic", "cnn", "bbc", "televisa", "telemundo", "univision", "hbo live", "cartoon network", "nickelodeon", "animal planet", "history channel", "tnt sports").any { name.startsWith(it) }
+
+    // A year in the title plus a genre/quality or a known film title beats a generic "TV" group.
+    if (!explicitLiveGroup && !channelName && (movieWords.any { name.contains(it) } || (year && (hasGenre || quality)))) return Kind.MOVIE
+
+    // A generic TV/General group is not enough to label a title as a live channel.
+    val explicitChannelGroup = listOf("canales", "canal", "live", "en vivo", "deportes", "noticias", "radio", "musica", "musical", "infantil").any { group.contains(it) }
+    val streamLooksLive = url.contains(".m3u8") || url.contains(".ts")
+    if (explicitLiveGroup || channelName || explicitChannelGroup || (e.tvgId.isNotBlank() && !year && streamLooksLive)) return Kind.LIVE
+    if (year && !channelName) return Kind.MOVIE
+    if (streamLooksLive && !year) return Kind.LIVE
     return Kind.OTHER
 }
 
+private fun normalize(value: String): String = java.text.Normalizer.normalize(value.lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD)
+    .replace(Regex("\\p{Mn}+"), "")
+
 private fun buildSeries(entries: List<Entry>): List<Series> {
-    val episodeRegex = Regex("""(?i)^(.*?)[ ._\-]*(S\d{1,2})[ ._\-]*(E\d{1,2})(.*)$""")
+    val episodeRegex = Regex("""(?i)^(.*?)[ ._\-]*(?:S\d{1,2}[ ._\-]*E\d{1,3}|\d{1,2}x\d{1,3}|T\d{1,2}[ ._\-]*E\d{1,3})(.*)$""")
     val groups = linkedMapOf<String, MutableList<Entry>>()
     for (entry in entries) {
         if (classify(entry) != Kind.SERIES) continue
@@ -411,8 +473,13 @@ private fun buildSeries(entries: List<Entry>): List<Series> {
 }
 
 private fun episodeNumber(name: String): Pair<Int, Int> {
-    val m = Regex("""(?i)S(\d{1,2})\s*E(\d{1,2})""").find(name)
-    return if (m != null) (m.groupValues[1].toIntOrNull() ?: 0) to (m.groupValues[2].toIntOrNull() ?: 0) else 0 to 0
+    val sxe = Regex("""(?i)S(\d{1,2})\s*E(\d{1,3})""").find(name)
+    if (sxe != null) return (sxe.groupValues[1].toIntOrNull() ?: 0) to (sxe.groupValues[2].toIntOrNull() ?: 0)
+    val x = Regex("""(?i)(\d{1,2})x(\d{1,3})""").find(name)
+    if (x != null) return (x.groupValues[1].toIntOrNull() ?: 0) to (x.groupValues[2].toIntOrNull() ?: 0)
+    val te = Regex("""(?i)T(\d{1,2})\s*E(\d{1,3})""").find(name)
+    if (te != null) return (te.groupValues[1].toIntOrNull() ?: 0) to (te.groupValues[2].toIntOrNull() ?: 0)
+    return 0 to 0
 }
 
 private fun download(url: String): String {
@@ -432,6 +499,7 @@ private fun parseM3u(text: String): List<Entry> {
     var group = ""
     var logo = ""
     var tvgId = ""
+    var attributes = ""
     for (raw in text.removePrefix("\uFEFF").lines()) {
         val line = raw.trim()
         if (line.startsWith("#EXTINF", true)) {
@@ -439,9 +507,11 @@ private fun parseM3u(text: String): List<Entry> {
             group = Regex("""(?i)group-title="([^"]*)"""").find(line)?.groupValues?.get(1).orEmpty()
             logo = Regex("""(?i)tvg-logo="([^"]*)"""").find(line)?.groupValues?.get(1).orEmpty()
             tvgId = Regex("""(?i)tvg-id="([^"]*)"""").find(line)?.groupValues?.get(1).orEmpty()
+            attributes = line.substringBeforeLast(",", line)
         } else if (line.startsWith("http://") || line.startsWith("https://")) {
-            if (name.isNotBlank()) result.add(Entry(name, line, group.ifBlank { "Sin categoría" }, logo, tvgId))
-            name = ""; group = ""; logo = ""; tvgId = ""
+            val placeholder = name.startsWith("Nombre de la Película", true) || line.contains("servidor.com", true)
+            if (name.isNotBlank() && !placeholder) result.add(Entry(name, line, group.ifBlank { "Sin categoría" }, logo, tvgId, attributes))
+            name = ""; group = ""; logo = ""; tvgId = ""; attributes = ""
         }
     }
     return result.distinctBy { it.url }
@@ -452,7 +522,7 @@ private fun saveCache(prefs: SharedPreferences, entries: List<Entry>) {
     entries.forEach { e ->
         arr.put(JSONObject().apply {
             put("name", e.name); put("url", e.url); put("group", e.group)
-            put("logo", e.logo); put("tvgId", e.tvgId)
+            put("logo", e.logo); put("tvgId", e.tvgId); put("attributes", e.attributes)
         })
     }
     prefs.edit().putString("playlist", arr.toString()).apply()
@@ -462,6 +532,6 @@ private fun readCache(prefs: SharedPreferences): List<Entry> = try {
     val arr = JSONArray(prefs.getString("playlist", "[]"))
     (0 until arr.length()).map { i ->
         val o = arr.getJSONObject(i)
-        Entry(o.optString("name"), o.optString("url"), o.optString("group"), o.optString("logo"), o.optString("tvgId"))
+        Entry(o.optString("name"), o.optString("url"), o.optString("group"), o.optString("logo"), o.optString("tvgId"), o.optString("attributes"))
     }
 } catch (_: Exception) { emptyList() }
