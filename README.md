@@ -1,31 +1,33 @@
-# Codigo Master IPTV — versión rediseñada
+# Codigo Master IPTV 1.3.0
 
-App Android nativa con Jetpack Compose y Media3.
+Aplicación Android IPTV con marca Codigo Master. Usa la lista M3U configurada en `MainActivity.kt` y conserva la última lista válida en caché local.
 
-## Mejoras
-- Diseño oscuro premium azul/dorado con identidad Codigo Master.
-- Navegación Inicio, TV, Películas y Series.
-- Clasificación usando `group-title`, `tvg-id` y patrones de episodios SxxExx.
-- Agrupa episodios como una sola serie (por ejemplo, Merlina); al tocarla se abre la lista de episodios.
-- Reproduce los enlaces con ExoPlayer/Media3.
-- Actualiza la M3U de GitHub al abrir y con el botón de refrescar; conserva caché si no hay conexión.
+## Compatibilidad
+- Android 5.0/API 21 o superior (teléfonos, Android TV y TV Box).
+- Fire TV / Fire TV Stick basado en Android compatible con API 21 o superior. La instalación en Fire TV puede hacerse mediante sideload si no se distribuye en una tienda.
+- Interfaz adaptable: navegación horizontal y controles enfocables para mando/D-pad; cuadrícula adaptable a pantallas grandes.
+- Reproducción HLS (`.m3u8`) mediante Media3 HLS.
 
-## GitHub Actions
-Sube el contenido completo de esta carpeta a tu repositorio (reemplazando los archivos anteriores). El workflow `.github/workflows/android.yml` compila `app-debug.apk` y lo publica como artefacto.
+## Mejoras 1.3.0
+- Catálogo de películas y series con cuadrículas adaptables al ancho disponible.
+- Navegación horizontal para que las pestañas no se corten en pantallas pequeñas.
+- Controles con foco para mando a distancia y navegación D-pad.
+- Detección de dispositivos de TV en el manifiesto (`LEANBACK_LAUNCHER`) sin exigir hardware táctil.
+- HLS habilitado para enlaces `.m3u8`.
+- Filtros calculados y retenidos con `remember` para evitar trabajo repetido al escribir o cambiar de pantalla.
+- La ruta `/movie/`, `/movies/`, `/vod/` y `/series/` y los grupos VOD tienen prioridad sobre metadatos genéricos de TV.
+- Se quitó la regla peligrosa que convertía cualquier elemento con año en una película.
+- Cache local: la app muestra la última lista guardada mientras consulta GitHub.
 
-## Lista
-La URL se configura en `PLAYLIST_URL` dentro de `MainActivity.kt`. Usa únicamente listas y streams para los que tengas permiso de acceso y distribución. No incluyas credenciales privadas en un repositorio público.
+## Compilar APK desde GitHub
+1. Sube el contenido de este proyecto a la raíz del repositorio.
+2. Abre **Actions**.
+3. Ejecuta **Build Android APK** (o espera al build tras un push).
+4. Abre la ejecución completada y descarga el artefacto `CodigoMaster-IPTV-APK`.
 
-## Nota sobre la clasificación
-La clasificación depende de los metadatos de la M3U. Los nombres S01E01/S01E02 se agrupan automáticamente. Para clasificar de forma fiable todo el catálogo, conviene que `group-title` use categorías coherentes como `TV`, `Películas` y `Series`; elementos sin metadatos suficientes se conservan fuera de esas categorías en vez de etiquetarlos incorrectamente.
+El workflow usa JDK 17, Gradle 8.9 y Android SDK 35.
 
+## Nota sobre clasificación
+La clasificación usa rutas de proveedor, `group-title`, marcadores de episodios, metadatos y nombres conocidos. Las listas M3U no tienen un estándar universal para distinguir VOD de canales; si el proveedor etiqueta incorrectamente un elemento y no aporta una ruta o categoría fiable, puede requerir una regla adicional.
 
-## Versión 1.2.0
-
-- Clasificación prioritaria por rutas M3U: `/movie/` para películas y `/series/` para episodios.
-- Los títulos con patrón S01E01, 1x02 o T1E02 se agrupan bajo una sola serie.
-- Se eliminan elementos de ejemplo con URL `servidor.com` para que no aparezcan como contenido real.
-- Navegación compacta de cuatro secciones y catálogos de películas/series en cuadrícula.
-- Los elementos repetidos con la misma URL se muestran una sola vez.
-
-La lista M3U debe incluir URLs reales de canales en la sección CANALES; los registros de ejemplo no se mostrarán como canales.
+Usa únicamente listas y transmisiones para las que tengas autorización.
