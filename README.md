@@ -1,21 +1,20 @@
-# Codigo Master IPTV
+# Codigo Master IPTV — versión rediseñada
 
-Proyecto Android nativo (Kotlin + Jetpack Compose + Media3) con lista M3U remota configurada y actualización al abrir / botón manual.
+App Android nativa con Jetpack Compose y Media3.
 
-## Compilar APK en GitHub
-1. Crea un repositorio nuevo en GitHub.
-2. Sube **todo el contenido** de esta carpeta (no solo el ZIP).
-3. Abre la pestaña **Actions** y ejecuta `Build Android APK` (o espera al push).
-4. Abre la ejecución terminada y descarga el artefacto `CodigoMaster-debug-apk`.
-5. Dentro encontrarás `app-debug.apk`.
+## Mejoras
+- Diseño oscuro premium azul/dorado con identidad Codigo Master.
+- Navegación Inicio, TV, Películas y Series.
+- Clasificación usando `group-title`, `tvg-id` y patrones de episodios SxxExx.
+- Agrupa episodios como una sola serie (por ejemplo, Merlina); al tocarla se abre la lista de episodios.
+- Reproduce los enlaces con ExoPlayer/Media3.
+- Actualiza la M3U de GitHub al abrir y con el botón de refrescar; conserva caché si no hay conexión.
 
-## Lista M3U
-La URL está definida en `app/src/main/java/com/codigomaster/iptv/MainActivity.kt` como `PLAYLIST_URL`.
-Puedes cambiarla ahí por otra URL pública autorizada. La app descarga la lista al abrir y conserva la última copia válida si no hay conexión. El botón de actualización permite volver a descargarla.
+## GitHub Actions
+Sube el contenido completo de esta carpeta a tu repositorio (reemplazando los archivos anteriores). El workflow `.github/workflows/android.yml` compila `app-debug.apk` y lo publica como artefacto.
 
-## Importante
-- Este proyecto es una base inicial funcional, no una app publicada ni probada en todos los dispositivos.
-- La lista M3U que configures debe contener streams que tengas derecho a usar y distribuir. Una app sin login no limita el número de usuarios; cualquier persona que tenga el APK puede intentar acceder a la lista.
-- Si el repositorio o la lista son públicos, cualquier URL y credencial incluida dentro de la M3U puede ser vista por terceros. No publiques credenciales privadas. Usa una lista autorizada para compartir o un backend con acceso individual.
-- La lista recibida contiene algunas entradas de ejemplo/placeholders y enlaces de streaming HTTP; revisa que el proveedor te autorice a redistribuirlos. El reproductor permite HTTP porque algunos enlaces de la lista lo usan.
-- El APK de depuración generado por Actions sirve para instalar/pruebas. Para distribución amplia conviene preparar una versión release firmada con una clave privada guardada en GitHub Secrets.
+## Lista
+La URL se configura en `PLAYLIST_URL` dentro de `MainActivity.kt`. Usa únicamente listas y streams para los que tengas permiso de acceso y distribución. No incluyas credenciales privadas en un repositorio público.
+
+## Nota sobre la clasificación
+La clasificación depende de los metadatos de la M3U. Los nombres S01E01/S01E02 se agrupan automáticamente. Para clasificar de forma fiable todo el catálogo, conviene que `group-title` use categorías coherentes como `TV`, `Películas` y `Series`; elementos sin metadatos suficientes se conservan fuera de esas categorías en vez de etiquetarlos incorrectamente.
