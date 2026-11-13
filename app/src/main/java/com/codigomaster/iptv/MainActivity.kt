@@ -3,9 +3,12 @@ package com.codigomaster.iptv
 import android.os.Bundle
 import android.content.SharedPreferences
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -16,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -34,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -47,6 +52,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import androidx.compose.ui.focus.onFocusChanged
 
 private const val PLAYLIST_URL =
     "https://raw.githubusercontent.com/walter2025hn/MiListaPremium/refs/heads/main/Completa.m3u"
@@ -60,6 +66,7 @@ private val Muted = Color(0xFF9AAEC9)
 
 data class Entry(val name: String, val url: String, val group: String, val logo: String, val tvgId: String, val attributes: String = "")
 data class Series(val title: String, val episodes: List<Entry>, val poster: String, val group: String)
+data class Catalog(val live: List<Entry>, val movies: List<Entry>, val series: List<Series>)
 enum class Kind { LIVE, MOVIE, SERIES, OTHER }
 
 class MainActivity : ComponentActivity() {
@@ -73,9 +80,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun CodigoMasterApp(prefs: SharedPreferences) {
     val scope = rememberCoroutineScope()
-    var entries by remember { mutableStateOf(readCache(prefs)) }
+    var entries by remember { mutableStateOf(emptyList<Entry>()) }
+    var catalog by remember { mutableStateOf(Catalog(emptyList(), emptyList(), emptyList())) }
     var loading by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf(if (entries.isEmpty()) "Conectando con tu lista…" else "Lista guardada disponible") }
+    var message by remember { mutableStateOf("Preparando tu contenido…") }
     var search by remember { mutableStateOf("") }
     var section by remember { mutableStateOf("Inicio") }
     var selectedSeries by remember { mutableStateOf<Series?>(null) }
@@ -89,8 +97,8 @@ private fun CodigoMasterApp(prefs: SharedPreferences) {
             try {
                 val latest = withContext(Dispatchers.IO) { parseM3u(download(PLAYLIST_URL)) }
                 if (latest.isNotEmpty()) {
+                    withContext(Dispatchers.IO) { saveCache(prefs, latest) }
                     entries = latest
-                    saveCache(prefs, latest)
                     message = "Actualizada • ${latest.size} elementos"
                 } else message = "La lista llegó vacía; conservamos la versión anterior."
             } catch (_: Exception) {
@@ -100,15 +108,29 @@ private fun CodigoMasterApp(prefs: SharedPreferences) {
         }
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        val cached = withContext(Dispatchers.IO) { readCache(prefs) }
+        if (cached.isNotEmpty()) {
+            entries = cached
+            message = "Contenido guardado • ${cached.size} elementos"
+        }
+        refresh()
+    }
 
-    val movies = remember(entries) { entries.filter { classify(it) == Kind.MOVIE } }
-    val live = remember(entries) { entries.filter { classify(it) == Kind.LIVE } }
-    val series = remember(entries) { buildSeries(entries) }
+    LaunchedEffect(entries) {
+        catalog = withContext(Dispatchers.Default) { buildCatalog(entries) }
+    }
+    val movies = catalog.movies
+    val live = catalog.live
+    val series = catalog.series
     val q = search.trim()
-    val filteredLive = live.filter { it.name.contains(q, true) || it.group.contains(q, true) }
-    val filteredMovies = movies.filter { it.name.contains(q, true) || it.group.contains(q, true) }
-    val filteredSeries = series.filter { it.title.contains(q, true) || it.episodes.any { ep -> ep.name.contains(q, true) } }
+    val filteredLive = remember(live, q) { if (q.isBlank()) live else live.filter { it.name.contains(q, true) || it.group.contains(q, true) } }
+    val filteredMovies = remember(movies, q) { if (q.isBlank()) movies else movies.filter { it.name.contains(q, true) || it.group.contains(q, true) } }
+    val filteredSeries = remember(series, q) { if (q.isBlank()) series else series.filter { it.title.contains(q, true) || it.episodes.any { ep -> ep.name.contains(q, true) } } }
+
+    BackHandler(enabled = playing != null || selectedSeries != null) {
+        if (playing != null) playing = null else selectedSeries = null
+    }
 
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Gold, secondary = Blue, background = Navy, surface = Panel,
@@ -144,16 +166,17 @@ private fun CodigoMasterApp(prefs: SharedPreferences) {
 
 @Composable
 private fun Header(loading: Boolean, onRefresh: () -> Unit) {
+    val wideScreen = LocalConfiguration.current.screenWidthDp >= 700
     Row(
         Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF111B31), Navy)))
             .padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(painterResource(R.drawable.brand_logo), null, Modifier.size(58.dp).clip(RoundedCornerShape(13.dp)), contentScale = ContentScale.Crop)
+        Image(painterResource(R.drawable.brand_logo), null, Modifier.size(if (wideScreen) 76.dp else 58.dp).clip(RoundedCornerShape(13.dp)), contentScale = ContentScale.Crop)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("CODIGO MASTER", color = Gold, fontWeight = FontWeight.Black, fontSize = 19.sp, letterSpacing = 1.sp)
-            Text("IPTV  •  TU ENTRETENIMIENTO", color = Muted, fontSize = 10.sp, letterSpacing = 1.3.sp)
+            Text("CODIGO MASTER", color = Gold, fontWeight = FontWeight.Black, fontSize = if (wideScreen) 27.sp else 19.sp, letterSpacing = 1.sp)
+            Text("IPTV  •  TU ENTRETENIMIENTO", color = Muted, fontSize = if (wideScreen) 14.sp else 10.sp, letterSpacing = 1.3.sp)
         }
         IconButton(onClick = onRefresh, enabled = !loading) {
             if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Gold, strokeWidth = 2.dp)
@@ -164,6 +187,7 @@ private fun Header(loading: Boolean, onRefresh: () -> Unit) {
 
 @Composable
 private fun SearchBox(value: String, onValue: (String) -> Unit) {
+    val wideScreen = LocalConfiguration.current.screenWidthDp >= 700
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(15.dp))
             .background(Panel2).padding(horizontal = 15.dp, vertical = 14.dp),
@@ -172,8 +196,8 @@ private fun SearchBox(value: String, onValue: (String) -> Unit) {
         Icon(Icons.Default.Search, null, tint = Muted)
         Spacer(Modifier.width(10.dp))
         Box(Modifier.weight(1f)) {
-            if (value.isEmpty()) Text("Buscar canales, películas o series…", color = Muted)
-            BasicTextField(value, onValue, singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp), modifier = Modifier.fillMaxWidth())
+            if (value.isEmpty()) Text("Buscar canales, películas o series…", color = Muted, fontSize = if (wideScreen) 19.sp else 15.sp)
+            BasicTextField(value, onValue, singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = if (wideScreen) 19.sp else 15.sp), modifier = Modifier.fillMaxWidth())
         }
         if (value.isNotEmpty()) Icon(Icons.Default.Close, "Borrar", tint = Muted, modifier = Modifier.clickable { onValue("") })
     }
@@ -181,23 +205,28 @@ private fun SearchBox(value: String, onValue: (String) -> Unit) {
 
 @Composable
 private fun Navigation(current: String, onSelect: (String) -> Unit) {
+    val wideScreen = LocalConfiguration.current.screenWidthDp >= 700
     val tabs = listOf("Inicio" to Icons.Default.Home, "TV" to Icons.Default.LiveTv, "Películas" to Icons.Default.Movie, "Series" to Icons.Default.Tv)
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp)
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         tabs.forEach { (name, icon) ->
             val active = current == name
-            Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(13.dp))
+            var focused by remember(name) { mutableStateOf(false) }
+            Row(
+                Modifier.widthIn(min = 82.dp).clip(RoundedCornerShape(15.dp))
                     .background(if (active) Gold else Panel)
-                    .clickable { onSelect(name) }
-                    .padding(vertical = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .border(if (focused) 3.dp else 1.dp, if (focused) Color.White else if (active) Gold else Color(0xFF25344C), RoundedCornerShape(15.dp))
+                    .onFocusChanged { focused = it.isFocused }
+                    .clickable { onSelect(name) }.focusable()
+                    .padding(horizontal = 15.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                Icon(icon, null, tint = if (active) Navy else Muted, modifier = Modifier.size(19.dp))
-                Spacer(Modifier.height(4.dp))
-                Text(name, color = if (active) Navy else Color.White, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, maxLines = 1)
+                Icon(icon, null, tint = if (active) Navy else Muted, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(7.dp))
+                Text(name, color = if (active) Navy else Color.White, fontWeight = FontWeight.Bold, fontSize = if (wideScreen) 16.sp else 12.sp, maxLines = 1)
             }
         }
     }
@@ -210,7 +239,7 @@ private fun HomeContent(
 ) {
     LazyColumn(contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(166.dp).clip(RoundedCornerShape(20.dp))) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 142.dp, max = 210.dp).clip(RoundedCornerShape(20.dp))) {
                 Image(painterResource(R.drawable.brand_logo), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xDD050914), Color(0x22050914)))))
                 Column(Modifier.align(Alignment.CenterStart).padding(18.dp)) {
@@ -243,9 +272,10 @@ private fun SectionHeader(title: String, count: Int, action: String, onClick: ()
 @Composable
 private fun EntryRail(items: List<Entry>, onPlay: (Entry) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-        items(items) { entry ->
-            Column(Modifier.width(118.dp).clickable { onPlay(entry) }) {
-                Poster(entry.logo, Modifier.fillMaxWidth().height(142.dp))
+        items(items, key = { it.url }) { entry ->
+            var focused by remember(entry.url) { mutableStateOf(false) }
+            Column(Modifier.width(132.dp).border(if (focused) 3.dp else 0.dp, if (focused) Gold else Color.Transparent, RoundedCornerShape(13.dp)).onFocusChanged { focused = it.isFocused }.clickable { onPlay(entry) }.focusable().padding(3.dp)) {
+                Poster(entry.logo, Modifier.fillMaxWidth().height(158.dp))
                 Spacer(Modifier.height(7.dp))
                 Text(entry.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(entry.group, color = Muted, fontSize = 10.sp, maxLines = 1)
@@ -257,8 +287,9 @@ private fun EntryRail(items: List<Entry>, onPlay: (Entry) -> Unit) {
 @Composable
 private fun SeriesRail(items: List<Series>, onSelect: (Series) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-        items(items) { s ->
-            Column(Modifier.width(118.dp).clickable { onSelect(s) }) {
+        items(items, key = { it.title }) { s ->
+            var focused by remember(s.title) { mutableStateOf(false) }
+            Column(Modifier.width(118.dp).border(if (focused) 3.dp else 0.dp, if (focused) Gold else Color.Transparent, RoundedCornerShape(13.dp)).onFocusChanged { focused = it.isFocused }.clickable { onSelect(s) }.focusable().padding(3.dp)) {
                 Poster(s.poster, Modifier.fillMaxWidth().height(142.dp))
                 Spacer(Modifier.height(7.dp))
                 Text(s.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
@@ -293,13 +324,14 @@ private fun PosterGrid(items: List<Entry>, title: String, onPlay: (Entry) -> Uni
         Text("$title  •  ${items.size}", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
         if (items.isEmpty()) EmptyState("No se encontraron películas")
         else LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+            columns = GridCells.Adaptive(minSize = if (LocalConfiguration.current.screenWidthDp >= 600) 190.dp else 145.dp),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             gridItems(items, key = { it.url }) { e ->
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Panel).clickable { onPlay(e) }.padding(9.dp)) {
+                var focused by remember(e.url) { mutableStateOf(false) }
+                Column(Modifier.fillMaxWidth().border(if (focused) 3.dp else 1.dp, if (focused) Gold else Color(0xFF1B2940), RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Panel).onFocusChanged { focused = it.isFocused }.clickable { onPlay(e) }.focusable().padding(9.dp)) {
                     Poster(e.logo, Modifier.fillMaxWidth().aspectRatio(0.70f))
                     Spacer(Modifier.height(8.dp))
                     Text(e.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
@@ -319,13 +351,14 @@ private fun SeriesGrid(items: List<Series>, onSelect: (Series) -> Unit) {
         Text("Series  •  ${items.size}", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
         if (items.isEmpty()) EmptyState("No se encontraron series")
         else LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+            columns = GridCells.Adaptive(minSize = if (LocalConfiguration.current.screenWidthDp >= 600) 190.dp else 145.dp),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             gridItems(items, key = { it.title }) { series ->
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Panel).clickable { onSelect(series) }.padding(9.dp)) {
+                var focused by remember(series.title) { mutableStateOf(false) }
+                Column(Modifier.fillMaxWidth().border(if (focused) 3.dp else 1.dp, if (focused) Gold else Color(0xFF1B2940), RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Panel).onFocusChanged { focused = it.isFocused }.clickable { onSelect(series) }.focusable().padding(9.dp)) {
                     Poster(series.poster, Modifier.fillMaxWidth().aspectRatio(0.70f))
                     Spacer(Modifier.height(8.dp))
                     Text(series.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
@@ -338,9 +371,10 @@ private fun SeriesGrid(items: List<Series>, onSelect: (Series) -> Unit) {
 
 @Composable
 private fun MediaRow(title: String, subtitle: String, logo: String, onClick: () -> Unit) {
+    var focused by remember(title, logo) { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Panel)
-            .clickable { onClick() }.padding(11.dp),
+        Modifier.fillMaxWidth().border(if (focused) 3.dp else 1.dp, if (focused) Gold else Color(0xFF1B2940), RoundedCornerShape(15.dp)).clip(RoundedCornerShape(15.dp)).background(Panel)
+            .onFocusChanged { focused = it.isFocused }.clickable { onClick() }.focusable().padding(11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Poster(logo, Modifier.size(width = 62.dp, height = 78.dp))
@@ -407,6 +441,19 @@ private fun PlayerViewScreen(entry: Entry, onBack: () -> Unit) {
     }
 }
 
+private fun buildCatalog(entries: List<Entry>): Catalog {
+    val live = ArrayList<Entry>()
+    val movies = ArrayList<Entry>()
+    for (entry in entries) {
+        when (classify(entry)) {
+            Kind.LIVE -> live.add(entry)
+            Kind.MOVIE -> movies.add(entry)
+            else -> Unit
+        }
+    }
+    return Catalog(live, movies, buildSeries(entries))
+}
+
 private fun classify(e: Entry): Kind {
     val name = normalize(e.name)
     val group = normalize(e.group)
@@ -428,20 +475,29 @@ private fun classify(e: Entry): Kind {
 
     val year = Regex("""\b(19\d{2}|20\d{2})\b""").containsMatchIn(name)
     val quality = listOf("1080p", "720p", "2160p", "4k", "bluray", "blu-ray", "web-dl", "webrip", "hdrip", "hdtv", "hevc", "x264", "x265").any { name.contains(it) || url.contains(it) }
-    val movieWords = listOf("la comunidad del anillo", "las dos torres", "el retorno del rey", "la guerra de los rohirrim", "el hobbit", "avengers", "spider-man", "batman", "jurassic", "harry potter", "rapidos y furiosos", "rapidos", "mision imposible", "toy story", "shrek", "avatar", "matrix", "gladiador", "titanic")
-    val genreGroups = listOf("fantasia", "accion", "aventura", "drama", "comedia", "terror", "animacion", "romance", "ciencia ficcion", "documental", "suspenso", "thriller")
+    val movieWords = listOf(
+        "la comunidad del anillo", "las dos torres", "el retorno del rey", "la guerra de los rohirrim", "el hobbit",
+        "avengers", "spider-man", "spiderman", "batman", "superman", "jurassic", "harry potter", "rapidos y furiosos",
+        "mision imposible", "toy story", "shrek", "avatar", "matrix", "gladiador", "titanic", "oppenheimer",
+        "barbie", "john wick", "el conjuro", "insidious", "sonic", "kung fu panda", "intensamente", "inside out",
+        "moana", "encanto", "coco", "minions", "deadpool", "venom", "transformers", "piratas del caribe"
+    )
+    val genreGroups = listOf("fantasia", "accion", "aventura", "drama", "comedia", "terror", "animacion", "romance", "ciencia ficcion", "documental", "suspenso", "thriller", "anime", "familia")
     val hasGenre = genreGroups.any { group.contains(it) }
     val explicitLiveGroup = listOf("canales", "canal", "en vivo", "live", "deportes en vivo", "noticias en vivo", "radio", "iptv live").any { group.contains(it) }
     val channelName = listOf("espn", "fox sports", "discovery", "national geographic", "cnn", "bbc", "televisa", "telemundo", "univision", "hbo live", "cartoon network", "nickelodeon", "animal planet", "history channel", "tnt sports").any { name.startsWith(it) }
 
-    // A year in the title plus a genre/quality or a known film title beats a generic "TV" group.
+    val urlLooksVod = listOf("/vod/", "/peliculas/", "/film/", "/films/", "/movie/", "/movies/").any { url.contains(it) }
+    val groupLooksVod = listOf("pelicula", "peliculas", "movie", "movies", "vod", "cine", "films", "estrenos").any { group.contains(it) }
+    // Los metadatos y la ruta VOD tienen prioridad sobre un grupo genérico llamado TV.
+    if (urlLooksVod || groupLooksVod) return Kind.MOVIE
     if (!explicitLiveGroup && !channelName && (movieWords.any { name.contains(it) } || (year && (hasGenre || quality)))) return Kind.MOVIE
 
     // A generic TV/General group is not enough to label a title as a live channel.
     val explicitChannelGroup = listOf("canales", "canal", "live", "en vivo", "deportes", "noticias", "radio", "musica", "musical", "infantil").any { group.contains(it) }
     val streamLooksLive = url.contains(".m3u8") || url.contains(".ts")
-    if (explicitLiveGroup || channelName || explicitChannelGroup || (e.tvgId.isNotBlank() && !year && streamLooksLive)) return Kind.LIVE
-    if (year && !channelName) return Kind.MOVIE
+    val livePath = listOf("/live/", "/channel/", "/channels/").any { url.contains(it) }
+    if (explicitLiveGroup || channelName || explicitChannelGroup || (livePath && streamLooksLive) || (e.tvgId.isNotBlank() && !year && streamLooksLive && !hasGenre)) return Kind.LIVE
     if (streamLooksLive && !year) return Kind.LIVE
     return Kind.OTHER
 }
