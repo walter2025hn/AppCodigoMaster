@@ -18,3 +18,14 @@ La URL se configura en `PLAYLIST_URL` dentro de `MainActivity.kt`. Usa únicamen
 
 ## Nota sobre la clasificación
 La clasificación depende de los metadatos de la M3U. Los nombres S01E01/S01E02 se agrupan automáticamente. Para clasificar de forma fiable todo el catálogo, conviene que `group-title` use categorías coherentes como `TV`, `Películas` y `Series`; elementos sin metadatos suficientes se conservan fuera de esas categorías en vez de etiquetarlos incorrectamente.
+
+
+## Versión 1.2.0
+
+- Clasificación prioritaria por rutas M3U: `/movie/` para películas y `/series/` para episodios.
+- Los títulos con patrón S01E01, 1x02 o T1E02 se agrupan bajo una sola serie.
+- Se eliminan elementos de ejemplo con URL `servidor.com` para que no aparezcan como contenido real.
+- Navegación compacta de cuatro secciones y catálogos de películas/series en cuadrícula.
+- Los elementos repetidos con la misma URL se muestran una sola vez.
+
+La lista M3U debe incluir URLs reales de canales en la sección CANALES; los registros de ejemplo no se mostrarán como canales.
