@@ -108,3 +108,11 @@ Instala «Downloader» desde la tienda de Amazon, activa Ajustes › Mi Fire TV 
 - Pantalla inmersiva (sin barras del sistema; desliza desde el borde para verlas).
 - Botón de categoría sobre la vista previa para filtrar canales.
 - El icono de filtro abre un panel con Tipo · Género · Año · País · Audio y cuadrícula de pósters con nota y etiqueta CC.
+
+
+## Versión 4.2.0 — Portadas tipo cartelera y ficha de película/serie
+- **Destacados, Películas, Series, Kids y Anime** comparten un nuevo diseño: banner doble con puntos (rota solo cada 7 s; desliza para cambiar), fila de 4 miniaturas apaisadas y filas de pósters por categoría con nota (azul) y etiqueta CC (naranja). Menú lateral con la opción activa en rojo.
+- **Ficha de película / serie** (al tocar cualquier póster): título y nota, país | fecha | título original, géneros, director, actores, sinopsis con «Más», vista previa con botón de reproducir, botones Pantalla completa · Idioma · Resolución · Favorito y fila «Quizás te guste». En series añade temporadas y episodios.
+- Idioma y Resolución abren el reproductor con el panel de audio / subtítulos / pantalla ya desplegado.
+- Con la clave de TMDB (Ajustes) se rellenan sinopsis, director, reparto, país, fecha y fondos apaisados; sin clave se muestra la categoría y el póster recortado. Cada ficha se consulta una vez y se guarda en el equipo.
+- «Continuar viendo» y el historial siguen reanudando directamente la reproducción.
