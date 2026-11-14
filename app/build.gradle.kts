@@ -14,8 +14,19 @@ android {
         targetSdk = 35
         // libVLC incluye código nativo: solo las ABI de TV Box, Fire TV y móviles actuales.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
-        versionCode = 6
-        versionName = "3.0.0"
+        versionCode = 7
+        versionName = "3.1.0"
+    }
+
+    buildTypes {
+        release {
+            // El APK "debug" de Compose es MUY lento (sin optimizar). Release + R8 = desplazamiento fluido.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Se firma con la clave de depuración para poder instalarlo (sideload) sin crear un keystore.
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     compileOptions {
