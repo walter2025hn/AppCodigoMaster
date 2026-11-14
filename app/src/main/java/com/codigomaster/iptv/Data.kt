@@ -1,6 +1,7 @@
 package com.codigomaster.iptv
 
 import android.content.Context
+import androidx.compose.runtime.mutableStateMapOf
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -46,6 +47,27 @@ class Store(context: Context) {
     var engine: String
         get() = prefs.getString("engine", "AUTO").orEmpty().ifBlank { "AUTO" }
         set(value) { prefs.edit().putString("engine", value).apply() }
+
+    /** Clave gratuita de TMDB (opcional) para mostrar la calificación del público. */
+    var tmdbKey: String
+        get() = prefs.getString("tmdb_key", "").orEmpty()
+        set(value) { prefs.edit().putString("tmdb_key", value.trim()).apply() }
+
+    /** Tus estrellas (1-5) por título/serie/canal. Observable: la interfaz se actualiza sola. */
+    val userRatings = mutableStateMapOf<String, Int>().apply {
+        try {
+            val o = JSONObject(prefs.getString("user_ratings", "{}").orEmpty())
+            o.keys().forEach { k -> put(k, o.getInt(k)) }
+        } catch (_: Exception) { }
+    }
+
+    fun rate(key: String, stars: Int) {
+        if (stars in 1..5) userRatings[key] = stars else userRatings.remove(key)
+        prefs.edit().putString("user_ratings", JSONObject(userRatings.toMap()).toString()).apply()
+    }
+
+    fun cachedPublic(key: String): String? = prefs.getString("pr_" + key.hashCode(), null)
+    fun cachePublic(key: String, value: String) { prefs.edit().putString("pr_" + key.hashCode(), value).apply() }
 
     fun favorites(): Set<String> = prefs.getStringSet("favs", emptySet()).orEmpty().toSet()
     fun saveFavorites(values: Set<String>) { prefs.edit().putStringSet("favs", HashSet(values)).apply() }

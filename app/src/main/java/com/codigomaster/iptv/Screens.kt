@@ -14,8 +14,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -134,7 +137,7 @@ private fun <T> LazyListScope.itemsIndexedRail(list: List<T>, content: @Composab
 private fun MovieRail(list: List<Entry>, cardWidth: androidx.compose.ui.unit.Dp, onPlay: (PlayRequest) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(list, key = { it.url }) { e ->
-            PosterCard(e.name, e.group, e.logo, Modifier.width(cardWidth)) { onPlay(PlayRequest(listOf(e), 0, false)) }
+            PosterCard(e.name, e.group, e.logo, Modifier.width(cardWidth), ratingKey = e.url) { onPlay(PlayRequest(listOf(e), 0, false)) }
         }
     }
 }
@@ -143,7 +146,7 @@ private fun MovieRail(list: List<Entry>, cardWidth: androidx.compose.ui.unit.Dp,
 fun SeriesRail(list: List<Series>, cardWidth: androidx.compose.ui.unit.Dp, onSeries: (Series) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(list, key = { it.key }) { s ->
-            PosterCard(s.title, "${s.episodes.size} episodios", s.poster, Modifier.width(cardWidth), badge = "SERIE") { onSeries(s) }
+            PosterCard(s.title, "${s.episodes.size} episodios", s.poster, Modifier.width(cardWidth), badge = "SERIE", ratingKey = s.key, ratingKind = RatingKind.SERIES) { onSeries(s) }
         }
     }
 }
@@ -164,62 +167,105 @@ private fun WelcomeBanner() {
 
 @Composable
 private fun Hero(items: List<HeroItem>, wide: Boolean, favorites: Set<String>, onToggleFavorite: (String) -> Unit) {
-    val pager = rememberPagerState { items.size }
-    LaunchedEffect(items.size) {
-        while (items.size > 1) {
-            delay(9000)
-            if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size)
-        }
+    val tv = LocalTv.current
+    var index by remember(items) { mutableStateOf(0) }
+    var focusedInside by remember { mutableStateOf(false) }
+    var interacted by remember { mutableStateOf(0) }
+    var showRate by remember { mutableStateOf(false) }
+    val last = items.lastIndex
+    fun go(d: Int) { index = (index + d + items.size) % items.size; interacted++ }
+
+    // Rota sola cada 9 s, pero se detiene mientras el mando está sobre las destacadas
+    // (antes cambiaba de página bajo tus dedos y el foco se perdía: por eso "se trababa").
+    LaunchedEffect(items.size, focusedInside, interacted) {
+        if (items.size < 2 || focusedInside) return@LaunchedEffect
+        while (true) { delay(9000); index = (index + 1) % items.size }
     }
-    Box {
-        HorizontalPager(pager) { page ->
-            val item = items[page]
-            val height = if (wide) 360.dp else 270.dp
-            Box(Modifier.fillMaxWidth().height(height)) {
-                Poster(item.image, Modifier.fillMaxSize().alpha(0.55f), contentScale = ContentScale.Crop, decodeWidth = 480, decodeHeight = 720)
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xF005070D), Color(0xCC050810), Color(0x66050810)))))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Cm.Bg)))
-                Row(
-                    Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 30.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            item.tag, color = Cm.OnGold, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp,
-                            modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Cm.Gold).padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text(item.title, color = Color.White, fontSize = if (wide) 34.sp else 22.sp, fontWeight = FontWeight.Black, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = if (wide) 38.sp else 26.sp)
-                        Spacer(Modifier.height(4.dp))
-                        Text(item.subtitle, color = Color(0xFFC3CCDD), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Spacer(Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            GoldButton(if (item.tag == "SERIE") "Ver episodios" else "Reproducir", Icons.Filled.PlayArrow, item.play)
-                            val fav = item.favKey in favorites
-                            GhostButton(if (fav) "En mi lista" else "Mi lista", if (fav) Icons.Filled.Check else Icons.Filled.Add, { onToggleFavorite(item.favKey) })
+
+    val current = items[index.coerceIn(0, last)]
+    val kind = if (current.tag == "SERIE") RatingKind.SERIES else RatingKind.MOVIE
+
+    BoxWithConstraints(
+        Modifier.fillMaxWidth()
+            .onFocusChanged { focusedInside = it.hasFocus }
+            .pointerInput(items.size) {
+                var drag = 0f
+                detectHorizontalDragGestures(onDragStart = { drag = 0f }, onDragEnd = {
+                    if (drag < -80f) go(1) else if (drag > 80f) go(-1)
+                }) { _, dx -> drag += dx }
+            }
+    ) {
+        // La altura sigue al ancho disponible: el contenido siempre cabe, también en TV con texto grande.
+        val height = (maxWidth * 0.40f).coerceIn(260.dp, 340.dp)
+        Box(Modifier.fillMaxWidth().height(height)) {
+            Crossfade(index, Modifier.fillMaxSize(), animationSpec = tween(350), label = "heroBg") { i ->
+                Box(Modifier.fillMaxSize()) {
+                    Poster(items[i.coerceIn(0, last)].image, Modifier.fillMaxSize().alpha(0.55f), contentScale = ContentScale.Crop, decodeWidth = 480, decodeHeight = 720)
+                    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xF005070D), Color(0xCC050810), Color(0x66050810)))))
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Cm.Bg)))
+                }
+            }
+            Row(
+                Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 28.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                    Crossfade(index, animationSpec = tween(350), label = "heroText") { i ->
+                        val item = items[i.coerceIn(0, last)]
+                        val score = rememberScore(item.favKey, item.title, if (item.tag == "SERIE") RatingKind.SERIES else RatingKind.MOVIE)
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    item.tag, color = Cm.OnGold, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp,
+                                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Cm.Gold).padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                                if (score != null) { Spacer(Modifier.width(8.dp)); RatingBadge(score) }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                item.title, color = Color.White, fontSize = if (wide) 28.sp else 20.sp, fontWeight = FontWeight.Black,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = if (wide) 32.sp else 24.sp
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Text(item.subtitle, color = Color(0xFFC3CCDD), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    Spacer(Modifier.width(16.dp))
+                    Spacer(Modifier.height(14.dp))
+                    // Botones FUERA del cambio de página: el foco del mando no se pierde al avanzar.
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (tv && items.size > 1) FocusIconButton(Icons.Filled.KeyboardArrowLeft, "Destacada anterior") { go(-1) }
+                        GoldButton(if (current.tag == "SERIE") "Ver episodios" else "Reproducir", Icons.Filled.PlayArrow, current.play)
+                        val fav = current.favKey in favorites
+                        GhostButton(if (fav) "En mi lista" else "Mi lista", if (fav) Icons.Filled.Check else Icons.Filled.Add, { onToggleFavorite(current.favKey) })
+                        GhostButton("Calificar", Icons.Filled.Star, { showRate = true })
+                        if (tv && items.size > 1) FocusIconButton(Icons.Filled.KeyboardArrowRight, "Destacada siguiente") { go(1) }
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Crossfade(index, Modifier.fillMaxHeight().aspectRatio(2f / 3f), animationSpec = tween(350), label = "heroPoster") { i ->
                     Poster(
-                        item.image,
-                        Modifier.width(if (wide) 190.dp else 108.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(14.dp)),
+                        items[i.coerceIn(0, last)].image,
+                        Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)).border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(14.dp)),
                         decodeWidth = 400, decodeHeight = 600
                     )
                 }
             }
-        }
-        if (items.size > 1) {
-            Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items.indices.forEach { i ->
-                    Box(
-                        Modifier.height(5.dp).width(if (i == pager.currentPage) 20.dp else 6.dp).clip(CircleShape)
-                            .background(if (i == pager.currentPage) Cm.Gold else Color(0x66FFFFFF))
-                    )
+            if (items.size > 1) {
+                Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items.indices.forEach { i ->
+                        Box(
+                            Modifier.height(5.dp).width(if (i == index) 20.dp else 6.dp).clip(CircleShape)
+                                .background(if (i == index) Cm.Gold else Color(0x66FFFFFF))
+                        )
+                    }
                 }
             }
         }
     }
+    if (showRate) RateDialog(
+        current.title, current.favKey, kind, { showRate = false },
+        favorite = current.favKey in favorites, onToggleFavorite = { onToggleFavorite(current.favKey) }
+    )
 }
 
 // ───────────────────────────── TV en vivo ─────────────────────────────
@@ -268,7 +314,7 @@ fun MoviesScreen(items: List<Entry>, favorites: Set<String>, wide: Boolean, onPl
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             gridItems(shown, key = { it.url }, contentType = { "poster" }) { e ->
-                PosterCard(e.name, e.group, e.logo, Modifier.fillMaxWidth(), badge = if (e.url in favorites) "★" else null) {
+                PosterCard(e.name, e.group, e.logo, Modifier.fillMaxWidth(), badge = if (e.url in favorites) "★" else null, ratingKey = e.url) {
                     onPlay(PlayRequest(listOf(e), 0, false))
                 }
             }
@@ -291,7 +337,7 @@ fun SeriesScreen(items: List<Series>, favorites: Set<String>, wide: Boolean, onS
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             gridItems(shown, key = { it.key }, contentType = { "poster" }) { s ->
-                PosterCard(s.title, "${s.episodes.size} episodios", s.poster, Modifier.fillMaxWidth(), badge = if (s.key in favorites) "★" else null) { onSeries(s) }
+                PosterCard(s.title, "${s.episodes.size} episodios", s.poster, Modifier.fillMaxWidth(), badge = if (s.key in favorites) "★" else null, ratingKey = s.key, ratingKind = RatingKind.SERIES) { onSeries(s) }
             }
         }
     }
@@ -389,6 +435,9 @@ fun SeriesDetail(
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
+    var showRate by remember { mutableStateOf(false) }
+    val score = rememberScore(series.key, series.title, RatingKind.SERIES)
+    if (showRate) RateDialog(series.title, series.key, RatingKind.SERIES, { showRate = false }, favorite, onToggleFavorite)
     val seasons = remember(series) { series.episodes.map { episodeNumber(it.name).first }.distinct().sorted() }
     var season by remember(series) { mutableStateOf(seasons.firstOrNull() ?: 0) }
     val shown = remember(series, season) { series.episodes.filter { episodeNumber(it.name).first == season } }
@@ -415,7 +464,10 @@ fun SeriesDetail(
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(series.title, color = Color.White, fontSize = if (wide) 30.sp else 21.sp, fontWeight = FontWeight.Black, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        Text("${series.episodes.size} episodios · ${series.group}", color = Color(0xFFC3CCDD), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (score != null) { RatingBadge(score); Spacer(Modifier.width(8.dp)) }
+                            Text("${series.episodes.size} episodios · ${series.group}", color = Color(0xFFC3CCDD), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             val target = resume ?: shown.firstOrNull() ?: series.episodes.first()
@@ -424,6 +476,7 @@ fun SeriesDetail(
                                 onPlay(PlayRequest(list, list.indexOf(target).coerceAtLeast(0), false, series.key, series.title))
                             })
                             GhostButton(if (favorite) "En mi lista" else "Mi lista", if (favorite) Icons.Filled.Check else Icons.Filled.Add, onToggleFavorite)
+                            GhostButton("Calificar", Icons.Filled.Star, { showRate = true })
                         }
                     }
                 }
@@ -478,6 +531,7 @@ fun SeriesDetail(
 fun SettingsDialog(store: Store, onSave: () -> Unit, onDismiss: () -> Unit) {
     var engine by remember { mutableStateOf(store.engine) }
     var url by remember { mutableStateOf(store.playlistUrl) }
+    var tmdb by remember { mutableStateOf(store.tmdbKey) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Cm.SurfaceHi,
@@ -514,11 +568,23 @@ fun SettingsDialog(store: Store, onSave: () -> Unit, onDismiss: () -> Unit) {
                         focusedTextColor = Cm.Text, unfocusedTextColor = Cm.Text
                     )
                 )
+                Spacer(Modifier.height(8.dp))
+                Text("CALIFICACIONES DEL PÚBLICO (TMDB)", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                OutlinedTextField(
+                    value = tmdb, onValueChange = { tmdb = it },
+                    placeholder = { Text("Clave gratuita de themoviedb.org", fontSize = 12.sp) },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Cm.Gold, unfocusedBorderColor = Cm.Outline, cursorColor = Cm.Gold,
+                        focusedTextColor = Cm.Text, unfocusedTextColor = Cm.Text
+                    )
+                )
+                Text("Crea una cuenta gratis en themoviedb.org › Ajustes › API y pega aquí la clave. Sin clave, solo verás tus propias estrellas.", color = Cm.Muted, fontSize = 10.sp)
                 Text("Usa únicamente listas y transmisiones para las que tengas autorización.", color = Cm.Muted, fontSize = 10.sp)
             }
         },
         confirmButton = {
-            TextButton(onClick = { store.engine = engine; store.playlistUrl = url; onSave() }) {
+            TextButton(onClick = { store.engine = engine; store.playlistUrl = url; store.tmdbKey = tmdb; onSave() }) {
                 Text("Guardar", color = Cm.Gold, fontWeight = FontWeight.Bold)
             }
         },

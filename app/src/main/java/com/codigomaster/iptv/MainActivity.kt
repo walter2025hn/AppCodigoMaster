@@ -47,11 +47,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val store = Store(applicationContext)
         val tv = isTelevision(this)
+        val ratings = RatingsRepo(store)
         setContent {
             // En TV se lee a 3 m: texto ~15 % mayor. LocalTv activa los ajustes de mando a distancia.
             val base = LocalDensity.current
             val density = if (tv) Density(base.density, base.fontScale * 1.15f) else base
-            CompositionLocalProvider(LocalTv provides tv, LocalDensity provides density) {
+            CompositionLocalProvider(LocalTv provides tv, LocalDensity provides density, LocalStore provides store, LocalRatings provides ratings) {
                 CodigoMasterTheme { CodigoMasterApp(store) }
             }
         }
@@ -66,6 +67,8 @@ private fun CodigoMasterApp(store: Store) {
     val scope = rememberCoroutineScope()
     val tv = remember(context) { isTelevision(context) }
     val wide = tv || LocalConfiguration.current.screenWidthDp >= 840
+    val classic = LocalConfiguration.current.screenWidthDp >= 560
+    val classicState = remember { ClassicState() }
 
     var entries by remember { mutableStateOf(emptyList<Entry>()) }
     var catalog by remember { mutableStateOf(Catalog(emptyList(), emptyList(), emptyList())) }
@@ -142,7 +145,7 @@ private fun CodigoMasterApp(store: Store) {
     }
     val catalogEmpty = catalog.live.isEmpty() && catalog.movies.isEmpty() && catalog.series.isEmpty()
 
-    BackHandler(enabled = play == null && selectedSeries == null && (section != Section.HOME || search.isNotEmpty())) {
+    BackHandler(enabled = !classic && play == null && selectedSeries == null && (section != Section.HOME || search.isNotEmpty())) {
         if (search.isNotEmpty()) search = "" else section = Section.HOME
     }
 
@@ -152,6 +155,36 @@ private fun CodigoMasterApp(store: Store) {
             PlayerScreen(request, store, favorites, ::toggleFavorite) {
                 play = null
                 recents = store.recents()
+            }
+        } else if (classic) {
+            val detail = selectedSeries
+            if (detail != null) {
+                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    SeriesDetail(
+                        detail, detail.key in favorites, true, store,
+                        onToggleFavorite = { toggleFavorite(detail.key) },
+                        onPlay = { play = it },
+                        onBack = { selectedSeries = null }
+                    )
+                }
+            } else {
+                val blocker = when {
+                    entries.isEmpty() && loading -> 1
+                    entries.isEmpty() -> 2
+                    catalogEmpty -> 1
+                    else -> 0
+                }
+                ClassicHome(
+                    state = classicState, store = store, catalog = catalog,
+                    fLive = fLive, fMovies = fMovies, fSeries = fSeries,
+                    q = q, search = search, onSearch = { search = it },
+                    continueWatching = continueWatching, favorites = favorites,
+                    loading = loading, message = message, statusError = statusError,
+                    blocker = blocker,
+                    onRefresh = ::refresh, onSettings = { showSettings = true },
+                    onPlay = { play = it }, onSeries = { selectedSeries = it },
+                    onToggleFavorite = ::toggleFavorite
+                )
             }
         } else {
             Row(Modifier.fillMaxSize().then(if (tv) Modifier.padding(end = 18.dp, top = 6.dp, bottom = 6.dp) else Modifier)) {
@@ -211,7 +244,7 @@ private fun CodigoMasterApp(store: Store) {
 }
 
 @Composable
-private fun LoadingState() {
+internal fun LoadingState() {
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
         initialValue = 0.55f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "alpha"

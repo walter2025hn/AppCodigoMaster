@@ -214,12 +214,23 @@ fun PosterCard(
     modifier: Modifier = Modifier,
     badge: String? = null,
     progress: Float? = null,
+    ratingKey: String? = null,
+    ratingKind: RatingKind = RatingKind.MOVIE,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(12.dp)
+    var showRate by remember { mutableStateOf(false) }
+    val score = if (ratingKey != null) rememberScore(ratingKey, title, ratingKind) else null
     Column(modifier) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).tvClickable(shape, 1.06f, onClick)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                .then(
+                    if (ratingKey != null) Modifier.tvClickableLong(shape, 1.06f, { showRate = true }, onClick)
+                    else Modifier.tvClickable(shape, 1.06f, onClick)
+                )
+        ) {
             Poster(image, Modifier.fillMaxSize())
+            if (score != null) RatingBadge(score, Modifier.align(Alignment.TopEnd).padding(6.dp))
             Box(
                 Modifier.fillMaxWidth().height(70.dp).align(Alignment.BottomCenter)
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
@@ -245,19 +256,24 @@ fun PosterCard(
         Text(title, color = Cm.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
         Text(subtitle, color = Cm.Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+    if (showRate && ratingKey != null) RateDialog(title, ratingKey, ratingKind, { showRate = false })
 }
 
 /** Tarjeta horizontal de canal para carruseles. */
 @Composable
 fun ChannelCard(entry: Entry, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
+    var showRate by remember { mutableStateOf(false) }
+    val score = rememberScore(entry.url, entry.name, RatingKind.CHANNEL)
+    if (showRate) RateDialog(entry.name, entry.url, RatingKind.CHANNEL, { showRate = false })
     Column(modifier) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(16f / 10f).tvClickable(shape, 1.06f, onClick)
+            Modifier.fillMaxWidth().aspectRatio(16f / 10f).tvClickableLong(shape, 1.06f, { showRate = true }, onClick)
                 .background(Brush.linearGradient(listOf(Cm.SurfaceTop, Cm.SurfaceHi)))
         ) {
             Poster(entry.logo, Modifier.fillMaxSize().padding(18.dp), Icons.Filled.LiveTv, ContentScale.Fit, 240, 150)
             LiveBadge(Modifier.align(Alignment.TopStart).padding(7.dp))
+            if (score != null) RatingBadge(score, Modifier.align(Alignment.TopEnd).padding(7.dp))
         }
         Spacer(Modifier.height(7.dp))
         Text(entry.name, color = Cm.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -275,9 +291,12 @@ fun ChannelRow(
 ) {
     val shape = RoundedCornerShape(14.dp)
     val tv = LocalTv.current
+    var showRate by remember { mutableStateOf(false) }
+    val score = rememberScore(entry.url, entry.name, RatingKind.CHANNEL)
+    if (showRate) RateDialog(entry.name, entry.url, RatingKind.CHANNEL, { showRate = false }, favorite, onToggleFavorite)
     Row(
         Modifier.fillMaxWidth()
-            .then(if (tv) Modifier.tvClickableLong(shape, 1.02f, onToggleFavorite, onClick) else Modifier.tvClickable(shape, 1.02f, onClick))
+            .tvClickableLong(shape, 1.02f, { showRate = true }, onClick)
             .background(Cm.SurfaceHi).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -292,6 +311,7 @@ fun ChannelRow(
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LiveBadge()
+                if (score != null) { Spacer(Modifier.width(6.dp)); RatingBadge(score) }
                 Spacer(Modifier.width(8.dp))
                 Text(entry.group, color = Cm.Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -397,7 +417,7 @@ fun TopBar(
 }
 
 @Composable
-private fun SearchField(value: String, onValue: (String) -> Unit, modifier: Modifier, onClose: () -> Unit) {
+internal fun SearchField(value: String, onValue: (String) -> Unit, modifier: Modifier, onClose: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Row(
         modifier.clip(RoundedCornerShape(14.dp)).background(Cm.SurfaceHi)
