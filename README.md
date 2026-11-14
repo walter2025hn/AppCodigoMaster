@@ -64,3 +64,23 @@ Usa únicamente listas y transmisiones para las que tengas autorización.
 ### Notas
 - Se incluyen solo las ABI `armeabi-v7a` y `arm64-v8a` (móviles, TV Box, Fire TV). El APK crece por libVLC (~25–35 MB).
 - Cache de la lista en archivo local (más rápido con listas grandes).
+
+
+## Versión 3.1.0 — Fluidez y compatibilidad TV / TV Box / Fire Stick
+
+### Por qué iba lenta la búsqueda de películas
+- El APK se compilaba en **debug** (Compose sin optimizar). Ahora el workflow genera **release** con R8.
+- El encabezado y el detalle de serie aplicaban `blur` en tiempo real: eliminado.
+- Los pósters se decodificaban a tamaño completo: ahora se decodifican al tamaño de la tarjeta (RGB565), con caché de memoria acotada y caché de disco de 200 MB.
+- La búsqueda filtraba miles de títulos en el hilo principal en cada tecla: ahora espera 300 ms y filtra en segundo plano.
+- La clasificación de la lista recreaba cientos de `Regex` por entrada: ahora se crean una sola vez (carga inicial más rápida).
+- El efecto de foco del mando ya no recompone cada tarjeta (anillo dibujado en la fase de dibujo).
+
+### Mando a distancia
+- Riel lateral y botones de la barra superior con foco dorado visible.
+- Texto ~15 % mayor en TV y márgenes seguros.
+- En TV, canales: mantén OK pulsado para añadir/quitar de Mi lista.
+- Manifiesto sin requisitos de pantalla táctil, cámara, micrófono ni orientación vertical.
+
+### Instalar en Fire Stick
+Instala «Downloader» desde la tienda de Amazon, activa Ajustes › Mi Fire TV › Opciones para desarrolladores › Instalar apps desconocidas, y descarga el APK.
