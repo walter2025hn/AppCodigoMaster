@@ -1,6 +1,15 @@
 package com.codigomaster.iptv
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Size as GeoSize
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,7 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Precision
+import coil.size.Size as CoilSize
 
 enum class Section(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     HOME("Inicio", Icons.Filled.Home),
@@ -48,21 +60,65 @@ enum class Section(val label: String, val icon: androidx.compose.ui.graphics.vec
     FAVS("Mi lista", Icons.Filled.Favorite)
 }
 
-/** Clic con efecto de foco (mando a distancia / D-pad): escala + borde dorado. */
+/** True en Android TV / TV Box / Fire TV. Se provee desde MainActivity. */
+val LocalTv = staticCompositionLocalOf { false }
+
+/**
+ * Clic con efecto de foco para mando a distancia / D-pad.
+ * El anillo dorado se dibuja en la fase de dibujo (sin border/clip dinámicos) y la escala
+ * se lee dentro de graphicsLayer: mover el foco solo repinta la tarjeta, no recompone su contenido.
+ */
 fun Modifier.tvClickable(
     shape: Shape = RoundedCornerShape(14.dp),
     focusScale: Float = 1.05f,
     onClick: () -> Unit
-): Modifier = composed {
+): Modifier = tvInteractive(shape, focusScale, Modifier.clickable(onClick = onClick))
+
+/** Igual que [tvClickable] pero con pulsación larga (en TV: mantener OK pulsado). */
+@OptIn(ExperimentalFoundationApi::class)
+fun Modifier.tvClickableLong(
+    shape: Shape = RoundedCornerShape(14.dp),
+    focusScale: Float = 1.05f,
+    onLongClick: () -> Unit,
+    onClick: () -> Unit
+): Modifier = tvInteractive(shape, focusScale, Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick))
+
+private fun Modifier.tvInteractive(shape: Shape, focusScale: Float, click: Modifier): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) focusScale else 1f, label = "focusScale")
+    val scale = animateFloatAsState(if (focused) focusScale else 1f, tween(110), label = "focusScale")
     this
         .zIndex(if (focused) 1f else 0f)
-        .graphicsLayer { scaleX = scale; scaleY = scale }
-        .border(if (focused) 2.5.dp else 0.dp, if (focused) Cm.Gold else Color.Transparent, shape)
-        .clip(shape)
+        .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
         .onFocusChanged { focused = it.isFocused }
-        .clickable(onClick = onClick)
+        .clip(shape)
+        .then(click)
+        .drawWithContent {
+            drawContent()
+            if (focused) {
+                val w = 3.dp.toPx()
+                when (val o = shape.createOutline(size, layoutDirection, this)) {
+                    is Outline.Rounded -> drawRoundRect(
+                        Cm.Gold, topLeft = androidx.compose.ui.geometry.Offset(w / 2, w / 2),
+                        size = GeoSize(size.width - w, size.height - w),
+                        cornerRadius = o.roundRect.topLeftCornerRadius, style = Stroke(w)
+                    )
+                    else -> drawRoundRect(
+                        Cm.Gold, topLeft = androidx.compose.ui.geometry.Offset(w / 2, w / 2),
+                        size = GeoSize(size.width - w, size.height - w),
+                        cornerRadius = CornerRadius(size.minDimension / 2), style = Stroke(w)
+                    )
+                }
+            }
+        }
+}
+
+/** Botón de icono enfocable (la barra superior de Material no muestra foco claro con el mando). */
+@Composable
+fun FocusIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Box(
+        Modifier.padding(horizontal = 2.dp).size(44.dp).tvClickable(CircleShape, 1.12f) { if (enabled) onClick() },
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, description, tint = if (enabled) Cm.Text else Cm.Muted, modifier = Modifier.size(24.dp)) }
 }
 
 @Composable
@@ -70,18 +126,26 @@ fun Poster(
     url: String,
     modifier: Modifier = Modifier,
     fallbackIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Filled.Movie,
-    contentScale: ContentScale = ContentScale.Crop
+    contentScale: ContentScale = ContentScale.Crop,
+    decodeWidth: Int = 320,
+    decodeHeight: Int = 480
 ) {
     val context = LocalContext.current
-    val request = remember(url) {
+    val tv = LocalTv.current
+    val request = remember(url, tv, decodeWidth, decodeHeight) {
         ImageRequest.Builder(context)
             .data(url.takeIf { it.startsWith("http://") || it.startsWith("https://") })
-            .crossfade(180)
+            .size(CoilSize(decodeWidth, decodeHeight))
+            .precision(Precision.INEXACT)
+            .allowRgb565(true)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .crossfade(if (tv) 0 else 160)
             .build()
     }
     Box(modifier.background(Cm.PosterFallback), contentAlignment = Alignment.Center) {
-        Icon(fallbackIcon, null, tint = Cm.Outline, modifier = Modifier.size(34.dp))
-        if (url.isNotBlank()) AsyncImage(request, null, Modifier.fillMaxSize(), contentScale = contentScale)
+        if (url.isBlank()) Icon(fallbackIcon, null, tint = Cm.Outline, modifier = Modifier.size(34.dp))
+        else AsyncImage(request, null, Modifier.fillMaxSize(), contentScale = contentScale)
     }
 }
 
@@ -192,7 +256,7 @@ fun ChannelCard(entry: Entry, modifier: Modifier = Modifier, onClick: () -> Unit
             Modifier.fillMaxWidth().aspectRatio(16f / 10f).tvClickable(shape, 1.06f, onClick)
                 .background(Brush.linearGradient(listOf(Cm.SurfaceTop, Cm.SurfaceHi)))
         ) {
-            Poster(entry.logo, Modifier.fillMaxSize().padding(18.dp), Icons.Filled.LiveTv, ContentScale.Fit)
+            Poster(entry.logo, Modifier.fillMaxSize().padding(18.dp), Icons.Filled.LiveTv, ContentScale.Fit, 240, 150)
             LiveBadge(Modifier.align(Alignment.TopStart).padding(7.dp))
         }
         Spacer(Modifier.height(7.dp))
@@ -210,14 +274,17 @@ fun ChannelRow(
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(14.dp)
+    val tv = LocalTv.current
     Row(
-        Modifier.fillMaxWidth().tvClickable(shape, 1.02f, onClick).background(Cm.SurfaceHi).padding(10.dp),
+        Modifier.fillMaxWidth()
+            .then(if (tv) Modifier.tvClickableLong(shape, 1.02f, onToggleFavorite, onClick) else Modifier.tvClickable(shape, 1.02f, onClick))
+            .background(Cm.SurfaceHi).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Poster(
             entry.logo,
             Modifier.size(58.dp).clip(RoundedCornerShape(10.dp)).background(Cm.SurfaceTop).padding(6.dp),
-            Icons.Filled.LiveTv, ContentScale.Fit
+            Icons.Filled.LiveTv, ContentScale.Fit, 120, 120
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -229,12 +296,16 @@ fun ChannelRow(
                 Text(entry.group, color = Cm.Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        IconButton(onClick = onToggleFavorite) {
-            Icon(
-                if (favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                if (favorite) "Quitar de mi lista" else "Añadir a mi lista",
-                tint = if (favorite) Cm.Gold else Cm.Muted
-            )
+        if (tv) {
+            if (favorite) Icon(Icons.Filled.Favorite, "En mi lista", tint = Cm.Gold, modifier = Modifier.padding(8.dp).size(22.dp))
+        } else {
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    if (favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    if (favorite) "Quitar de mi lista" else "Añadir a mi lista",
+                    tint = if (favorite) Cm.Gold else Cm.Muted
+                )
+            }
         }
     }
 }
@@ -316,21 +387,23 @@ fun TopBar(
                 onSearch(""); searchOpen = false
             }
         } else {
-            IconButton(onClick = { searchOpen = true }) { Icon(Icons.Filled.Search, "Buscar", tint = Cm.Text) }
+            FocusIconButton(Icons.Filled.Search, "Buscar") { searchOpen = true }
         }
-        IconButton(onClick = onRefresh, enabled = !loading) {
-            if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Cm.Gold, strokeWidth = 2.dp)
-            else Icon(Icons.Filled.Refresh, "Actualizar lista", tint = Cm.Text)
-        }
-        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Ajustes", tint = Cm.Text) }
+        if (loading) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(22.dp), color = Cm.Gold, strokeWidth = 2.dp)
+        } else FocusIconButton(Icons.Filled.Refresh, "Actualizar lista") { onRefresh() }
+        FocusIconButton(Icons.Filled.Settings, "Ajustes") { onSettings() }
     }
 }
 
 @Composable
 private fun SearchField(value: String, onValue: (String) -> Unit, modifier: Modifier, onClose: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     Row(
         modifier.clip(RoundedCornerShape(14.dp)).background(Cm.SurfaceHi)
-            .border(1.dp, Cm.Outline, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
+            .border(if (focused) 2.dp else 1.dp, if (focused) Cm.Gold else Cm.Outline, RoundedCornerShape(14.dp))
+            .onFocusChanged { focused = it.hasFocus }
+            .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(Icons.Filled.Search, null, tint = Cm.Muted, modifier = Modifier.size(20.dp))
@@ -372,22 +445,28 @@ fun BottomBar(current: Section, onSelect: (Section) -> Unit) {
 
 @Composable
 fun SideRail(current: Section, onSelect: (Section) -> Unit) {
-    NavigationRail(containerColor = Cm.Surface, modifier = Modifier.fillMaxHeight()) {
-        Spacer(Modifier.weight(1f))
+    Column(
+        Modifier.fillMaxHeight().background(Cm.Surface).padding(horizontal = 10.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
         Section.values().forEach { s ->
-            NavigationRailItem(
-                selected = current == s, onClick = { onSelect(s) },
-                icon = { Icon(s.icon, s.label) },
-                label = { Text(if (s == Section.LIVE) "TV" else s.label, fontSize = 11.sp, maxLines = 1) },
-                alwaysShowLabel = true,
-                colors = NavigationRailItemDefaults.colors(
-                    selectedIconColor = Cm.OnGold, selectedTextColor = Cm.Gold, indicatorColor = Cm.Gold,
-                    unselectedIconColor = Cm.Muted, unselectedTextColor = Cm.Muted
+            val active = current == s
+            Column(
+                Modifier.width(78.dp).tvClickable(RoundedCornerShape(16.dp), 1.06f) { onSelect(s) }
+                    .background(if (active) Cm.Gold else Color.Transparent)
+                    .padding(vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(s.icon, s.label, tint = if (active) Cm.OnGold else Cm.Muted, modifier = Modifier.size(26.dp))
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    if (s == Section.LIVE) "TV" else s.label,
+                    color = if (active) Cm.OnGold else Cm.Muted, fontSize = 11.sp,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium, maxLines = 1
                 )
-            )
-            Spacer(Modifier.height(6.dp))
+            }
+            Spacer(Modifier.height(8.dp))
         }
-        Spacer(Modifier.weight(1f))
     }
 }
-

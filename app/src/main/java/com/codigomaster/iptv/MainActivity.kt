@@ -27,6 +27,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import kotlinx.coroutines.delay
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,9 +46,19 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         val store = Store(applicationContext)
-        setContent { CodigoMasterTheme { CodigoMasterApp(store) } }
+        val tv = isTelevision(this)
+        setContent {
+            // En TV se lee a 3 m: texto ~15 % mayor. LocalTv activa los ajustes de mando a distancia.
+            val base = LocalDensity.current
+            val density = if (tv) Density(base.density, base.fontScale * 1.15f) else base
+            CompositionLocalProvider(LocalTv provides tv, LocalDensity provides density) {
+                CodigoMasterTheme { CodigoMasterApp(store) }
+            }
+        }
     }
 }
+
+private data class Filtered(val live: List<Entry>, val movies: List<Entry>, val series: List<Series>)
 
 @Composable
 private fun CodigoMasterApp(store: Store) {
@@ -103,10 +116,26 @@ private fun CodigoMasterApp(store: Store) {
     }
     LaunchedEffect(entries) { catalog = withContext(Dispatchers.Default) { buildCatalog(entries) } }
 
-    val q = search.trim()
-    val fLive = remember(catalog, q) { if (q.isBlank()) catalog.live else catalog.live.filter { it.name.contains(q, true) || it.group.contains(q, true) } }
-    val fMovies = remember(catalog, q) { if (q.isBlank()) catalog.movies else catalog.movies.filter { it.name.contains(q, true) || it.group.contains(q, true) } }
-    val fSeries = remember(catalog, q) { if (q.isBlank()) catalog.series else catalog.series.filter { it.title.contains(q, true) || it.group.contains(q, true) } }
+    // Búsqueda: espera a que dejes de escribir y filtra fuera del hilo principal (antes cada tecla
+    // recorría miles de títulos en el hilo de la interfaz y la app se quedaba pegada).
+    var q by remember { mutableStateOf("") }
+    LaunchedEffect(search) {
+        val next = search.trim()
+        if (next.isEmpty()) q = "" else { delay(300); q = next }
+    }
+    val filtered by produceState(Filtered(catalog.live, catalog.movies, catalog.series), catalog, q) {
+        value = if (q.isBlank()) Filtered(catalog.live, catalog.movies, catalog.series)
+        else withContext(Dispatchers.Default) {
+            Filtered(
+                catalog.live.filter { it.name.contains(q, true) || it.group.contains(q, true) },
+                catalog.movies.filter { it.name.contains(q, true) || it.group.contains(q, true) },
+                catalog.series.filter { it.title.contains(q, true) || it.group.contains(q, true) }
+            )
+        }
+    }
+    val fLive = filtered.live
+    val fMovies = filtered.movies
+    val fSeries = filtered.series
     val continueWatching = remember(recents, entries) {
         val byUrl = entries.associateBy { it.url }
         recents.mapNotNull { byUrl[it] }.filter { store.position(it.url) > 10_000 }.take(12)
@@ -125,7 +154,7 @@ private fun CodigoMasterApp(store: Store) {
                 recents = store.recents()
             }
         } else {
-            Row(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxSize().then(if (tv) Modifier.padding(end = 18.dp, top = 6.dp, bottom = 6.dp) else Modifier)) {
                 if (wide) SideRail(section) { section = it; selectedSeries = null; search = "" }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
                     val detail = selectedSeries

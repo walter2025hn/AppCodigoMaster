@@ -21,7 +21,7 @@ data class Entry(
 )
 
 data class Series(val title: String, val episodes: List<Entry>, val poster: String, val group: String) {
-    val key: String get() = "series:" + title.lowercase(Locale.ROOT)
+    val key: String = "series:" + title.lowercase(Locale.ROOT)
 }
 
 data class Catalog(val live: List<Entry>, val movies: List<Entry>, val series: List<Series>)
@@ -105,6 +105,27 @@ fun buildCatalog(entries: List<Entry>): Catalog {
     return Catalog(live, movies, buildSeries(seriesEntries))
 }
 
+private val EPISODE_PATTERN = Regex("""\b(s\d{1,2}\s*e\d{1,3}|\d{1,2}x\d{1,3}|t\d{1,2}\s*e\d{1,3}|temporada\s*\d+|capitulo\s*\d+|episodio\s*\d+)\b""")
+private val YEAR_PATTERN = Regex("""\b(19\d{2}|20\d{2})\b""")
+private val SERIES_GROUP_WORDS = listOf("serie", "series", "tv shows", "temporadas")
+private val MOVIE_GROUP_WORDS = listOf("pelicula", "peliculas", "movies", "movie", "vod", "cine", "films", "film", "estrenos")
+private val MOVIE_ATTRS = listOf("type=movie", "tvg-type=movie", "content-type=movie", "media-type=movie", "vod=true")
+private val QUALITY_WORDS = listOf("1080p", "720p", "2160p", "4k", "bluray", "blu-ray", "web-dl", "webrip", "hdrip", "hdtv", "hevc", "x264", "x265")
+private val MOVIE_NAME_WORDS = listOf(
+    "la comunidad del anillo", "las dos torres", "el retorno del rey", "la guerra de los rohirrim", "el hobbit",
+    "avengers", "spider-man", "spiderman", "batman", "superman", "jurassic", "harry potter", "rapidos y furiosos",
+    "mision imposible", "toy story", "shrek", "avatar", "matrix", "gladiador", "titanic", "oppenheimer",
+    "barbie", "john wick", "el conjuro", "insidious", "sonic", "kung fu panda", "intensamente", "inside out",
+    "moana", "encanto", "coco", "minions", "deadpool", "venom", "transformers", "piratas del caribe"
+)
+private val GENRE_GROUPS = listOf("fantasia", "accion", "aventura", "drama", "comedia", "terror", "animacion", "romance", "ciencia ficcion", "documental", "suspenso", "thriller", "anime", "familia")
+private val EXPLICIT_LIVE_GROUPS = listOf("canales", "canal", "en vivo", "live", "deportes en vivo", "noticias en vivo", "radio", "iptv live")
+private val CHANNEL_NAME_PREFIXES = listOf("espn", "fox sports", "discovery", "national geographic", "cnn", "bbc", "televisa", "telemundo", "univision", "hbo live", "cartoon network", "nickelodeon", "animal planet", "history channel", "tnt sports")
+private val VOD_URL_PARTS = listOf("/vod/", "/peliculas/", "/film/", "/films/", "/movie/", "/movies/")
+private val VOD_GROUP_WORDS = listOf("pelicula", "peliculas", "movie", "movies", "vod", "cine", "films", "estrenos")
+private val CHANNEL_GROUP_WORDS = listOf("canales", "canal", "live", "en vivo", "deportes", "noticias", "radio", "musica", "musical", "infantil")
+private val LIVE_PATHS = listOf("/live/", "/channel/", "/channels/")
+
 fun classify(e: Entry): Kind {
     val name = normalize(e.name)
     val group = normalize(e.group)
@@ -116,72 +137,69 @@ fun classify(e: Entry): Kind {
     if (url.contains("/movie/") || url.contains("/movies/")) return Kind.MOVIE
 
     // Los marcadores de episodio tienen prioridad sobre nombres de grupo genéricos.
-    val episodePattern = Regex("""\b(s\d{1,2}\s*e\d{1,3}|\d{1,2}x\d{1,3}|t\d{1,2}\s*e\d{1,3}|temporada\s*\d+|capitulo\s*\d+|episodio\s*\d+)\b""")
-    if (episodePattern.containsMatchIn(name) || listOf("serie", "series", "tv shows", "temporadas").any { group.contains(it) }) return Kind.SERIES
+    if (EPISODE_PATTERN.containsMatchIn(name) || SERIES_GROUP_WORDS.any { group.contains(it) }) return Kind.SERIES
 
-    val movieGroups = listOf("pelicula", "peliculas", "movies", "movie", "vod", "cine", "films", "film", "estrenos")
-    val movieAttrs = listOf("type=movie", "tvg-type=movie", "content-type=movie", "media-type=movie", "vod=true")
-    if (movieGroups.any { group.contains(it) } || movieAttrs.any { attrs.contains(it) }) return Kind.MOVIE
+    if (MOVIE_GROUP_WORDS.any { group.contains(it) } || MOVIE_ATTRS.any { attrs.contains(it) }) return Kind.MOVIE
 
-    val year = Regex("""\b(19\d{2}|20\d{2})\b""").containsMatchIn(name)
-    val quality = listOf("1080p", "720p", "2160p", "4k", "bluray", "blu-ray", "web-dl", "webrip", "hdrip", "hdtv", "hevc", "x264", "x265").any { name.contains(it) || url.contains(it) }
-    val movieWords = listOf(
-        "la comunidad del anillo", "las dos torres", "el retorno del rey", "la guerra de los rohirrim", "el hobbit",
-        "avengers", "spider-man", "spiderman", "batman", "superman", "jurassic", "harry potter", "rapidos y furiosos",
-        "mision imposible", "toy story", "shrek", "avatar", "matrix", "gladiador", "titanic", "oppenheimer",
-        "barbie", "john wick", "el conjuro", "insidious", "sonic", "kung fu panda", "intensamente", "inside out",
-        "moana", "encanto", "coco", "minions", "deadpool", "venom", "transformers", "piratas del caribe"
-    )
-    val genreGroups = listOf("fantasia", "accion", "aventura", "drama", "comedia", "terror", "animacion", "romance", "ciencia ficcion", "documental", "suspenso", "thriller", "anime", "familia")
-    val hasGenre = genreGroups.any { group.contains(it) }
-    val explicitLiveGroup = listOf("canales", "canal", "en vivo", "live", "deportes en vivo", "noticias en vivo", "radio", "iptv live").any { group.contains(it) }
-    val channelName = listOf("espn", "fox sports", "discovery", "national geographic", "cnn", "bbc", "televisa", "telemundo", "univision", "hbo live", "cartoon network", "nickelodeon", "animal planet", "history channel", "tnt sports").any { name.startsWith(it) }
+    val year = YEAR_PATTERN.containsMatchIn(name)
+    val quality = QUALITY_WORDS.any { name.contains(it) || url.contains(it) }
+    val hasGenre = GENRE_GROUPS.any { group.contains(it) }
+    val explicitLiveGroup = EXPLICIT_LIVE_GROUPS.any { group.contains(it) }
+    val channelName = CHANNEL_NAME_PREFIXES.any { name.startsWith(it) }
 
-    val urlLooksVod = listOf("/vod/", "/peliculas/", "/film/", "/films/", "/movie/", "/movies/").any { url.contains(it) }
-    val groupLooksVod = listOf("pelicula", "peliculas", "movie", "movies", "vod", "cine", "films", "estrenos").any { group.contains(it) }
+    val urlLooksVod = VOD_URL_PARTS.any { url.contains(it) }
+    val groupLooksVod = VOD_GROUP_WORDS.any { group.contains(it) }
     if (urlLooksVod || groupLooksVod) return Kind.MOVIE
-    if (!explicitLiveGroup && !channelName && (movieWords.any { name.contains(it) } || (year && (hasGenre || quality)))) return Kind.MOVIE
+    if (!explicitLiveGroup && !channelName && (MOVIE_NAME_WORDS.any { name.contains(it) } || (year && (hasGenre || quality)))) return Kind.MOVIE
 
-    val explicitChannelGroup = listOf("canales", "canal", "live", "en vivo", "deportes", "noticias", "radio", "musica", "musical", "infantil").any { group.contains(it) }
+    val explicitChannelGroup = CHANNEL_GROUP_WORDS.any { group.contains(it) }
     val streamLooksLive = url.contains(".m3u8") || url.contains(".ts")
-    val livePath = listOf("/live/", "/channel/", "/channels/").any { url.contains(it) }
+    val livePath = LIVE_PATHS.any { url.contains(it) }
     if (explicitLiveGroup || channelName || explicitChannelGroup || (livePath && streamLooksLive) || (e.tvgId.isNotBlank() && !year && streamLooksLive && !hasGenre)) return Kind.LIVE
     if (streamLooksLive && !year) return Kind.LIVE
     return Kind.OTHER
 }
 
+private val DIACRITICS = Regex("\\p{Mn}+")
+
 private fun normalize(value: String): String =
     java.text.Normalizer.normalize(value.lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD)
-        .replace(Regex("\\p{Mn}+"), "")
+        .replace(DIACRITICS, "")
 
 private val episodeRegex =
     Regex("""(?i)^(.*?)[ ._\-]*(?:S\d{1,2}[ ._\-]*E\d{1,3}|\d{1,2}x\d{1,3}|T\d{1,2}[ ._\-]*E\d{1,3})(.*)$""")
+
+private val TRAILING_SEPARATORS = Regex("""[._\-]+$""")
+private val SPACES = Regex("""\s+""")
+private val SXE_REGEX = Regex("""(?i)S(\d{1,2})\s*E(\d{1,3})""")
+private val X_REGEX = Regex("""(?i)(\d{1,2})x(\d{1,3})""")
+private val TE_REGEX = Regex("""(?i)T(\d{1,2})\s*E(\d{1,3})""")
 
 private fun buildSeries(seriesEntries: List<Entry>): List<Series> {
     val groups = linkedMapOf<String, MutableList<Entry>>()
     for (entry in seriesEntries) {
         val match = episodeRegex.find(entry.name)
-        val title = if (match != null) match.groupValues[1].replace(Regex("""[._\-]+$"""), "").trim().ifBlank { entry.name.trim() }
+        val title = if (match != null) match.groupValues[1].replace(TRAILING_SEPARATORS, "").trim().ifBlank { entry.name.trim() }
         else entry.name.trim()
-        val key = title.lowercase(Locale.ROOT).replace(Regex("""\s+"""), " ")
+        val key = title.lowercase(Locale.ROOT).replace(SPACES, " ")
         groups.getOrPut(key) { mutableListOf() }.add(entry)
     }
     return groups.map { (_, eps) ->
         val sorted = eps.sortedWith(compareBy<Entry>({ episodeNumber(it.name).first }, { episodeNumber(it.name).second }, { it.name }))
         val first = sorted.first()
         val title = episodeRegex.find(first.name)?.groupValues?.get(1)
-            ?.replace(Regex("""[._\-]+$"""), "")?.trim()?.ifBlank { first.name } ?: first.name
+            ?.replace(TRAILING_SEPARATORS, "")?.trim()?.ifBlank { first.name } ?: first.name
         Series(title, sorted, sorted.firstOrNull { it.logo.isNotBlank() }?.logo.orEmpty(), first.group)
     }.sortedBy { it.title.lowercase(Locale.ROOT) }.distinctBy { it.key }
 }
 
 /** Devuelve (temporada, episodio); (0, 0) si no hay marcador. */
 fun episodeNumber(name: String): Pair<Int, Int> {
-    val sxe = Regex("""(?i)S(\d{1,2})\s*E(\d{1,3})""").find(name)
+    val sxe = SXE_REGEX.find(name)
     if (sxe != null) return (sxe.groupValues[1].toIntOrNull() ?: 0) to (sxe.groupValues[2].toIntOrNull() ?: 0)
-    val x = Regex("""(?i)(\d{1,2})x(\d{1,3})""").find(name)
+    val x = X_REGEX.find(name)
     if (x != null) return (x.groupValues[1].toIntOrNull() ?: 0) to (x.groupValues[2].toIntOrNull() ?: 0)
-    val te = Regex("""(?i)T(\d{1,2})\s*E(\d{1,3})""").find(name)
+    val te = TE_REGEX.find(name)
     if (te != null) return (te.groupValues[1].toIntOrNull() ?: 0) to (te.groupValues[2].toIntOrNull() ?: 0)
     return 0 to 0
 }

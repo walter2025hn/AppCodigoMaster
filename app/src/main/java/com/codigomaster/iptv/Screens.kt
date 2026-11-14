@@ -24,7 +24,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -68,6 +68,9 @@ fun HomeScreen(
         }
         out
     }
+    val liveRail = remember(catalog) { catalog.live.take(24) }
+    val movieRail = remember(catalog) { catalog.movies.take(24) }
+    val seriesRail = remember(catalog) { catalog.series.take(24) }
     val genreRails = remember(catalog.movies) {
         catalog.movies.groupBy { it.group }.entries.filter { it.value.size >= 6 && it.key != "Sin categoría" }
             .sortedByDescending { it.value.size }.take(4).map { it.key to it.value.take(20) }
@@ -94,7 +97,7 @@ fun HomeScreen(
         if (catalog.live.isNotEmpty()) item(key = "live") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle("TV en vivo", "${catalog.live.size} canales", "Ver todos") { onSection(Section.LIVE) }
-                val rail = catalog.live.take(24)
+                val rail = liveRail
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     itemsIndexedRail(rail) { i, e -> ChannelCard(e, Modifier.width(if (wide) 210.dp else 160.dp)) { onPlay(PlayRequest(rail, i, true)) } }
                 }
@@ -103,7 +106,7 @@ fun HomeScreen(
         if (catalog.movies.isNotEmpty()) item(key = "movies") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle("Películas", "${catalog.movies.size} títulos", "Ver todas") { onSection(Section.MOVIES) }
-                MovieRail(catalog.movies.take(24), cardWidth, onPlay)
+                MovieRail(movieRail, cardWidth, onPlay)
             }
         }
         genreRails.forEach { (genre, list) ->
@@ -117,7 +120,7 @@ fun HomeScreen(
         if (catalog.series.isNotEmpty()) item(key = "series") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle("Series", "${catalog.series.size} series", "Ver todas") { onSection(Section.SERIES) }
-                SeriesRail(catalog.series.take(24), cardWidth, onSeries)
+                SeriesRail(seriesRail, cardWidth, onSeries)
             }
         }
     }
@@ -164,8 +167,8 @@ private fun Hero(items: List<HeroItem>, wide: Boolean, favorites: Set<String>, o
     val pager = rememberPagerState { items.size }
     LaunchedEffect(items.size) {
         while (items.size > 1) {
-            delay(7000)
-            pager.animateScrollToPage((pager.currentPage + 1) % items.size)
+            delay(9000)
+            if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.currentPage + 1) % items.size)
         }
     }
     Box {
@@ -173,8 +176,8 @@ private fun Hero(items: List<HeroItem>, wide: Boolean, favorites: Set<String>, o
             val item = items[page]
             val height = if (wide) 360.dp else 270.dp
             Box(Modifier.fillMaxWidth().height(height)) {
-                Poster(item.image, Modifier.fillMaxSize().blur(22.dp), contentScale = ContentScale.Crop)
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xF005070D), Color(0x99050810), Color(0x44050810)))))
+                Poster(item.image, Modifier.fillMaxSize().alpha(0.55f), contentScale = ContentScale.Crop, decodeWidth = 480, decodeHeight = 720)
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xF005070D), Color(0xCC050810), Color(0x66050810)))))
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Cm.Bg)))
                 Row(
                     Modifier.fillMaxSize().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 30.dp),
@@ -200,7 +203,8 @@ private fun Hero(items: List<HeroItem>, wide: Boolean, favorites: Set<String>, o
                     Poster(
                         item.image,
                         Modifier.width(if (wide) 190.dp else 108.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(14.dp)),
+                        decodeWidth = 400, decodeHeight = 600
                     )
                 }
             }
@@ -240,7 +244,7 @@ fun LiveScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            gridItemsIndexed(shown, key = { _, e -> e.url }) { i, e ->
+            gridItemsIndexed(shown, key = { _, e -> e.url }, contentType = { _, _ -> "channel" }) { i, e ->
                 ChannelRow(e, e.url in favorites, { onToggleFavorite(e.url) }) { onPlay(PlayRequest(shown, i, true)) }
             }
         }
@@ -263,7 +267,7 @@ fun MoviesScreen(items: List<Entry>, favorites: Set<String>, wide: Boolean, onPl
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            gridItems(shown, key = { it.url }) { e ->
+            gridItems(shown, key = { it.url }, contentType = { "poster" }) { e ->
                 PosterCard(e.name, e.group, e.logo, Modifier.fillMaxWidth(), badge = if (e.url in favorites) "★" else null) {
                     onPlay(PlayRequest(listOf(e), 0, false))
                 }
@@ -286,7 +290,7 @@ fun SeriesScreen(items: List<Series>, favorites: Set<String>, wide: Boolean, onS
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            gridItems(shown, key = { it.key }) { s ->
+            gridItems(shown, key = { it.key }, contentType = { "poster" }) { s ->
                 PosterCard(s.title, "${s.episodes.size} episodios", s.poster, Modifier.fillMaxWidth(), badge = if (s.key in favorites) "★" else null) { onSeries(s) }
             }
         }
@@ -395,8 +399,8 @@ fun SeriesDetail(
     LazyColumn(contentPadding = PaddingValues(bottom = 28.dp)) {
         item {
             Box(Modifier.fillMaxWidth().height(if (wide) 330.dp else 290.dp)) {
-                Poster(series.poster, Modifier.fillMaxSize().blur(24.dp))
-                Box(Modifier.fillMaxSize().background(Color(0x99050810)))
+                Poster(series.poster, Modifier.fillMaxSize().alpha(0.45f), decodeWidth = 480, decodeHeight = 720)
+                Box(Modifier.fillMaxSize().background(Color(0xAA050810)))
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Cm.Bg)))
                 Row(
                     Modifier.fillMaxSize().statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 6.dp),
@@ -407,7 +411,7 @@ fun SeriesDetail(
                     Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    Poster(series.poster, Modifier.width(if (wide) 150.dp else 104.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(12.dp)))
+                    Poster(series.poster, Modifier.width(if (wide) 150.dp else 104.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(12.dp)), decodeWidth = 360, decodeHeight = 540)
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(series.title, color = Color.White, fontSize = if (wide) 30.sp else 21.sp, fontWeight = FontWeight.Black, maxLines = 3, overflow = TextOverflow.Ellipsis)
