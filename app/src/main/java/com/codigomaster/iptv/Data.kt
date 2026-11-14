@@ -17,7 +17,9 @@ data class Entry(
     val group: String,
     val logo: String,
     val tvgId: String,
-    val attributes: String = ""
+    val attributes: String = "",
+    /** Sección declarada en la lista con marcas «---- CANALES ----»: LIVE, SERIES, MOVIE o vacío. */
+    val section: String = ""
 )
 
 data class Series(val title: String, val episodes: List<Entry>, val poster: String, val group: String) {
@@ -63,7 +65,7 @@ class Store(context: Context) {
         entries.forEach { e ->
             arr.put(JSONObject().apply {
                 put("name", e.name); put("url", e.url); put("group", e.group)
-                put("logo", e.logo); put("tvgId", e.tvgId); put("attributes", e.attributes)
+                put("logo", e.logo); put("tvgId", e.tvgId); put("attributes", e.attributes); put("section", e.section)
             })
         }
         cacheFile.writeText(arr.toString())
@@ -75,7 +77,7 @@ class Store(context: Context) {
         val arr = JSONArray(raw)
         (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
-            Entry(o.optString("name"), o.optString("url"), o.optString("group"), o.optString("logo"), o.optString("tvgId"), o.optString("attributes"))
+            Entry(o.optString("name"), o.optString("url"), o.optString("group"), o.optString("logo"), o.optString("tvgId"), o.optString("attributes"), o.optString("section"))
         }
     } catch (_: Exception) { emptyList() }
 }
@@ -107,56 +109,97 @@ fun buildCatalog(entries: List<Entry>): Catalog {
 
 private val EPISODE_PATTERN = Regex("""\b(s\d{1,2}\s*e\d{1,3}|\d{1,2}x\d{1,3}|t\d{1,2}\s*e\d{1,3}|temporada\s*\d+|capitulo\s*\d+|episodio\s*\d+)\b""")
 private val YEAR_PATTERN = Regex("""\b(19\d{2}|20\d{2})\b""")
-private val SERIES_GROUP_WORDS = listOf("serie", "series", "tv shows", "temporadas")
-private val MOVIE_GROUP_WORDS = listOf("pelicula", "peliculas", "movies", "movie", "vod", "cine", "films", "film", "estrenos")
-private val MOVIE_ATTRS = listOf("type=movie", "tvg-type=movie", "content-type=movie", "media-type=movie", "vod=true")
-private val QUALITY_WORDS = listOf("1080p", "720p", "2160p", "4k", "bluray", "blu-ray", "web-dl", "webrip", "hdrip", "hdtv", "hevc", "x264", "x265")
-private val MOVIE_NAME_WORDS = listOf(
-    "la comunidad del anillo", "las dos torres", "el retorno del rey", "la guerra de los rohirrim", "el hobbit",
-    "avengers", "spider-man", "spiderman", "batman", "superman", "jurassic", "harry potter", "rapidos y furiosos",
-    "mision imposible", "toy story", "shrek", "avatar", "matrix", "gladiador", "titanic", "oppenheimer",
-    "barbie", "john wick", "el conjuro", "insidious", "sonic", "kung fu panda", "intensamente", "inside out",
-    "moana", "encanto", "coco", "minions", "deadpool", "venom", "transformers", "piratas del caribe"
+private val TOKEN_SPLIT = Regex("[^a-z0-9]+")
+private val BARE_ID_PATH = Regex("""/\d+/?$""")
+
+// Palabras COMPLETAS (tokens) del grupo. Se comparan por token para que "cinemax" o "cinecanal"
+// (canales) no se confundan con "cine" (películas).
+private val LIVE_GROUP_TOKENS = setOf(
+    "canales", "canal", "vivo", "live", "radio", "deportes", "deporte", "sports", "noticias", "news",
+    "musica", "infantil", "iptv", "abierta"
 )
-private val GENRE_GROUPS = listOf("fantasia", "accion", "aventura", "drama", "comedia", "terror", "animacion", "romance", "ciencia ficcion", "documental", "suspenso", "thriller", "anime", "familia")
-private val EXPLICIT_LIVE_GROUPS = listOf("canales", "canal", "en vivo", "live", "deportes en vivo", "noticias en vivo", "radio", "iptv live")
-private val CHANNEL_NAME_PREFIXES = listOf("espn", "fox sports", "discovery", "national geographic", "cnn", "bbc", "televisa", "telemundo", "univision", "hbo live", "cartoon network", "nickelodeon", "animal planet", "history channel", "tnt sports")
-private val VOD_URL_PARTS = listOf("/vod/", "/peliculas/", "/film/", "/films/", "/movie/", "/movies/")
-private val VOD_GROUP_WORDS = listOf("pelicula", "peliculas", "movie", "movies", "vod", "cine", "films", "estrenos")
-private val CHANNEL_GROUP_WORDS = listOf("canales", "canal", "live", "en vivo", "deportes", "noticias", "radio", "musica", "musical", "infantil")
-private val LIVE_PATHS = listOf("/live/", "/channel/", "/channels/")
+private val SERIES_GROUP_TOKENS = setOf("serie", "series", "temporadas", "temporada", "novelas", "telenovelas", "doramas", "shows")
+private val MOVIE_GROUP_TOKENS = setOf("pelicula", "peliculas", "movie", "movies", "vod", "cine", "film", "films", "estrenos", "cinema")
+private val GENRE_GROUP_TOKENS = setOf("fantasia", "accion", "aventura", "drama", "comedia", "terror", "animacion", "romance", "ciencia", "documental", "documentales", "suspenso", "thriller", "anime", "familia")
+private val MOVIE_ATTRS = listOf("type=movie", "tvg-type=movie", "content-type=movie", "media-type=movie", "vod=true")
+private val SERIES_ATTRS = listOf("type=series", "tvg-type=series", "content-type=series", "media-type=series")
+private val LIVE_ATTRS = listOf("type=live", "tvg-type=live", "content-type=live", "media-type=live")
+private val QUALITY_WORDS = listOf("1080p", "720p", "2160p", "bluray", "blu-ray", "web-dl", "webrip", "hdrip", "x264", "x265")
+private val VOD_EXTENSIONS = listOf(".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".mpg", ".mpeg", ".webm")
+private val LIVE_EXTENSIONS = listOf(".m3u8", ".ts", ".m3u", ".php")
+private val LIVE_PATHS = listOf("/live/", "/channel/", "/channels/", "/stream/", "/iptv/", "/tv/")
+private val VOD_URL_PARTS = listOf("/vod/", "/peliculas/", "/film/", "/films/")
+// Nombres de canales conocidos: el nombre EMPIEZA por ellos (o los contiene como palabra completa).
+private val CHANNEL_NAMES = listOf(
+    "espn", "fox", "tnt", "hbo", "cinemax", "cinecanal", "axn", "tlc", "tudn", "dazn", "directv", "win sports",
+    "discovery", "national geographic", "nat geo", "cnn", "bbc", "televisa", "telemundo", "univision", "unimas",
+    "cartoon network", "cartoonito", "nickelodeon", "nick jr", "animal planet", "history channel", "a&e", "disney channel",
+    "disney junior", "paramount network", "comedy central", "studio universal", "star channel", "de pelicula",
+    "las estrellas", "azteca", "canal", "caracol", "rcn", "telefe", "tve", "antena 3", "la sexta", "mtv", "vh1",
+    "gala tv", "foro tv", "adn 40", "tvn", "chilevision", "americatv", "willax", "euronews", "france 24",
+    "al jazeera", "bein", "tyc"
+)
+
+private fun tokens(value: String): Set<String> = value.split(TOKEN_SPLIT).filter { it.isNotEmpty() }.toSet()
+
+private fun looksLikeChannelName(name: String): Boolean = CHANNEL_NAMES.any { n ->
+    name.startsWith(n) && (name.length == n.length || !name[n.length].isLetterOrDigit())
+}
 
 fun classify(e: Entry): Kind {
+    // La lista del usuario ya viene ordenada por secciones («---- CANALES ----», «---- SERIES ----»,
+    // «---- PELICULAS ----»): es la señal más fiable, por encima de cualquier heurística.
+    when (e.section) {
+        "LIVE" -> return Kind.LIVE
+        "SERIES" -> return Kind.SERIES
+        "MOVIE" -> return Kind.MOVIE
+    }
     val name = normalize(e.name)
     val group = normalize(e.group)
     val attrs = normalize(e.attributes)
     val url = e.url.lowercase(Locale.ROOT)
+    val path = url.substringBefore('?').substringBefore('#')
+    val groupTokens = tokens(group)
 
-    // Las rutas del proveedor son la señal más fiable de esta lista.
-    if (url.contains("/series/")) return Kind.SERIES
-    if (url.contains("/movie/") || url.contains("/movies/")) return Kind.MOVIE
+    // 1) Rutas del proveedor (Xtream): la señal más fiable.
+    if (path.contains("/series/")) return Kind.SERIES
+    if (path.contains("/movie/") || path.contains("/movies/")) return Kind.MOVIE
+    if (path.contains("/live/")) return Kind.LIVE
 
-    // Los marcadores de episodio tienen prioridad sobre nombres de grupo genéricos.
-    if (EPISODE_PATTERN.containsMatchIn(name) || SERIES_GROUP_WORDS.any { group.contains(it) }) return Kind.SERIES
+    // 2) Etiquetas explícitas del M3U.
+    if (SERIES_ATTRS.any { attrs.contains(it) }) return Kind.SERIES
+    if (MOVIE_ATTRS.any { attrs.contains(it) }) return Kind.MOVIE
+    if (LIVE_ATTRS.any { attrs.contains(it) }) return Kind.LIVE
 
-    if (MOVIE_GROUP_WORDS.any { group.contains(it) } || MOVIE_ATTRS.any { attrs.contains(it) }) return Kind.MOVIE
+    // 3) Marcadores de episodio en el nombre.
+    if (EPISODE_PATTERN.containsMatchIn(name)) return Kind.SERIES
 
+    // 4) Archivo de vídeo suelto (mp4/mkv/avi…) = contenido a la carta; no es un canal.
+    val isVodFile = VOD_EXTENSIONS.any { path.endsWith(it) }
+    val streamLooksLive = !isVodFile && (LIVE_EXTENSIONS.any { path.endsWith(it) } || BARE_ID_PATH.containsMatchIn(path) ||
+        LIVE_PATHS.any { path.contains(it) })
+
+    // 5) Grupo explícito de canales: gana a «pelicula/cine» (p. ej. «Canales de Cine», «Cinemax», «TV · Películas»).
+    val liveGroup = groupTokens.any { it in LIVE_GROUP_TOKENS } || group.contains("en vivo") || group.contains("24/7")
+    val seriesGroup = groupTokens.any { it in SERIES_GROUP_TOKENS }
+    val movieGroup = groupTokens.any { it in MOVIE_GROUP_TOKENS } || VOD_URL_PARTS.any { path.contains(it) }
+    if (liveGroup && !isVodFile) return Kind.LIVE
+
+    // 6) Nombre de canal conocido o tvg-id (las películas casi nunca traen tvg-id) con stream en vivo.
+    if (!isVodFile && looksLikeChannelName(name) && !movieGroup && !seriesGroup) return Kind.LIVE
+    if (streamLooksLive && e.tvgId.isNotBlank() && !movieGroup && !seriesGroup) return Kind.LIVE
+
+    // 7) Grupos de series / películas.
+    if (seriesGroup) return Kind.SERIES
+    if (movieGroup || isVodFile) return Kind.MOVIE
+
+    // 8) Sin pistas claras: un stream en vivo sin año es un canal; con año/calidad/género es película.
     val year = YEAR_PATTERN.containsMatchIn(name)
-    val quality = QUALITY_WORDS.any { name.contains(it) || url.contains(it) }
-    val hasGenre = GENRE_GROUPS.any { group.contains(it) }
-    val explicitLiveGroup = EXPLICIT_LIVE_GROUPS.any { group.contains(it) }
-    val channelName = CHANNEL_NAME_PREFIXES.any { name.startsWith(it) }
-
-    val urlLooksVod = VOD_URL_PARTS.any { url.contains(it) }
-    val groupLooksVod = VOD_GROUP_WORDS.any { group.contains(it) }
-    if (urlLooksVod || groupLooksVod) return Kind.MOVIE
-    if (!explicitLiveGroup && !channelName && (MOVIE_NAME_WORDS.any { name.contains(it) } || (year && (hasGenre || quality)))) return Kind.MOVIE
-
-    val explicitChannelGroup = CHANNEL_GROUP_WORDS.any { group.contains(it) }
-    val streamLooksLive = url.contains(".m3u8") || url.contains(".ts")
-    val livePath = LIVE_PATHS.any { url.contains(it) }
-    if (explicitLiveGroup || channelName || explicitChannelGroup || (livePath && streamLooksLive) || (e.tvgId.isNotBlank() && !year && streamLooksLive && !hasGenre)) return Kind.LIVE
-    if (streamLooksLive && !year) return Kind.LIVE
+    val quality = QUALITY_WORDS.any { name.contains(it) || path.contains(it) }
+    val hasGenre = groupTokens.any { it in GENRE_GROUP_TOKENS }
+    if (year && (hasGenre || quality)) return Kind.MOVIE
+    if (streamLooksLive) return Kind.LIVE
+    if (hasGenre) return Kind.MOVIE
     return Kind.OTHER
 }
 
@@ -221,6 +264,19 @@ private val groupRegex = Regex("""(?i)group-title="([^"]*)"""")
 private val logoRegex = Regex("""(?i)tvg-logo="([^"]*)"""")
 private val idRegex = Regex("""(?i)tvg-id="([^"]*)"""")
 
+private val SECTION_MARKER = Regex("""^[-=_*#~\s]{2,}([^-=_*#~].*?)[-=_*#~\s]{2,}$""")
+
+private fun sectionOf(marker: String): String {
+    val t = java.text.Normalizer.normalize(marker.lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD).replace(DIACRITICS, "")
+    return when {
+        t.contains("canal") || t.contains("en vivo") || t.contains("live") -> "LIVE"
+        t.contains("serie") || t.contains("novela") -> "SERIES"
+        t.contains("pelicula") || t.contains("peli") || t.contains("cine") || t.contains("movie") || t.contains("vod") -> "MOVIE"
+        t.contains("tv") -> "LIVE"
+        else -> ""
+    }
+}
+
 fun parseM3u(text: String): List<Entry> {
     val result = mutableListOf<Entry>()
     var name = ""
@@ -228,20 +284,31 @@ fun parseM3u(text: String): List<Entry> {
     var logo = ""
     var tvgId = ""
     var attributes = ""
-    for (raw in text.removePrefix("﻿").lineSequence()) {
+    var section = ""
+    for (raw in text.removePrefix("\uFEFF").lineSequence()) {
         val line = raw.trim()
         if (line.startsWith("#EXTINF", true)) {
-            name = line.substringAfterLast(',').trim().ifBlank { "Sin título" }
+            // Las comas dentro del título («El león, la bruja y el ropero») no deben cortarlo:
+            // el título empieza tras el último «",» de los atributos.
+            val cut = line.lastIndexOf("\",")
+            val titleStart = if (cut >= 0) cut + 2 else line.indexOf(',') + 1
+            name = (if (titleStart > 0) line.substring(titleStart) else "").trim().ifBlank { "Sin título" }
             group = groupRegex.find(line)?.groupValues?.get(1).orEmpty()
             logo = logoRegex.find(line)?.groupValues?.get(1).orEmpty()
             tvgId = idRegex.find(line)?.groupValues?.get(1).orEmpty()
-            attributes = line.substringBeforeLast(",", line)
+            attributes = if (titleStart > 0) line.substring(0, titleStart - 1) else line
         } else if (line.startsWith("http://", true) || line.startsWith("https://", true) ||
             line.startsWith("rtsp://", true) || line.startsWith("rtmp://", true) || line.startsWith("udp://", true)
         ) {
             val placeholder = name.startsWith("Nombre de la Película", true) || line.contains("servidor.com", true)
-            if (name.isNotBlank() && !placeholder) result.add(Entry(name, line, group.ifBlank { "Sin categoría" }, logo, tvgId, attributes))
+            if (name.isNotBlank() && !placeholder) result.add(Entry(name, line, group.ifBlank { "Sin categoría" }, logo, tvgId, attributes, section))
             name = ""; group = ""; logo = ""; tvgId = ""; attributes = ""
+        } else if (line.isNotEmpty() && !line.startsWith("#")) {
+            // Marca de sección tipo «---- CANALES ----».
+            SECTION_MARKER.find(line)?.let { m ->
+                val found = sectionOf(m.groupValues[1])
+                if (found.isNotEmpty()) section = found
+            }
         }
     }
     return result.distinctBy { it.url }
