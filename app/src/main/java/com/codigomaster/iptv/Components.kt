@@ -128,7 +128,8 @@ fun Poster(
     fallbackIcon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Filled.Movie,
     contentScale: ContentScale = ContentScale.Crop,
     decodeWidth: Int = 320,
-    decodeHeight: Int = 480
+    decodeHeight: Int = 480,
+    alignment: Alignment = Alignment.Center
 ) {
     val context = LocalContext.current
     val tv = LocalTv.current
@@ -145,7 +146,7 @@ fun Poster(
     }
     Box(modifier.background(Cm.PosterFallback), contentAlignment = Alignment.Center) {
         if (url.isBlank()) Icon(fallbackIcon, null, tint = Cm.Outline, modifier = Modifier.size(34.dp))
-        else AsyncImage(request, null, Modifier.fillMaxSize(), contentScale = contentScale)
+        else AsyncImage(request, null, Modifier.fillMaxSize(), alignment = alignment, contentScale = contentScale)
     }
 }
 

@@ -81,6 +81,12 @@ private val Pure = Color(0xFF000000)
 private val Circle = Color(0xFF2B2B2B)
 private val MenuIdle = Color(0xFFB9B9B9)
 
+private fun openShow(item: ShowItem, onMovie: (Entry) -> Unit, onSeries: (Series) -> Unit) {
+    val e = item.entry
+    val sr = item.series
+    if (e != null) onMovie(e) else if (sr != null) onSeries(sr)
+}
+
 internal val KIDS_RE = Regex("kids|infantil|ni(ñ|n)os|cartoon|disney|nick|junior|dibujos|animaci", RegexOption.IGNORE_CASE)
 internal val ANIME_RE = Regex("anime|crunchy|shonen|manga", RegexOption.IGNORE_CASE)
 
@@ -115,6 +121,7 @@ fun ClassicHome(
     onSettings: () -> Unit,
     onPlay: (PlayRequest) -> Unit,
     onSeries: (Series) -> Unit,
+    onMovie: (Entry) -> Unit,
     onToggleFavorite: (String) -> Unit
 ) {
     val tv = LocalTv.current
@@ -124,6 +131,10 @@ fun ClassicHome(
     var searchOpen by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
     val liveGroups = remember(catalog) { groupCounts(catalog.live, 200) }
+    // Una película suelta abre su ficha (captura 2); canales y episodios siguen reproduciéndose directo.
+    val openOrPlay: (PlayRequest) -> Unit = { r ->
+        if (!r.live && r.seriesKey == null && r.queue.size == 1) onMovie(r.queue[0]) else onPlay(r)
+    }
 
     // Pantalla inmersiva: sin barras del sistema para dar más espacio al vídeo y al contenido.
     val view = LocalView.current
@@ -145,7 +156,7 @@ fun ClassicHome(
 
     CompositionLocalProvider(LocalUiScale provides s) {
         if (state.overlay == ClassicOverlay.FILTER) {
-            FilterScreen(state, catalog, onPlay, onSeries) { state.overlay = null }
+            FilterScreen(state, catalog, openOrPlay, onSeries) { state.overlay = null }
         } else Row(
             Modifier.fillMaxSize().background(Pure)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
@@ -169,37 +180,36 @@ fun ClassicHome(
                     when {
                         blocker == 1 -> LoadingState()
                         blocker == 2 -> EmptyState(Icons.Filled.CloudOff, "Sin contenido", "No pudimos cargar la lista. Toca el icono de wifi para reintentar.")
-                        state.overlay == ClassicOverlay.FAVS -> FavoritesScreen(catalog, favorites, true, onPlay, onSeries)
+                        state.overlay == ClassicOverlay.FAVS -> FavoritesScreen(catalog, favorites, true, openOrPlay, onSeries)
                         state.overlay == ClassicOverlay.RECENTS ->
                             if (continueWatching.isEmpty()) EmptyState(Icons.Filled.History, "Sin historial", "Aquí aparecerán las películas y episodios que empieces a ver.")
                             else CatalogRails(Catalog(emptyList(), continueWatching, emptyList()), favorites, onPlay, onSeries, "Sin historial")
                         state.tab == NavTab.TV -> TvTab(state, store, fLive, favorites, cfg.screenWidthDp, onPlay, onToggleFavorite) { showPicker = true }
-                        q.isNotBlank() -> SearchResults(fLive, fMovies, fSeries, true, onPlay, onSeries)
+                        q.isNotBlank() -> SearchResults(fLive, fMovies, fSeries, true, openOrPlay, onSeries)
                         else -> when (state.tab) {
-                            NavTab.FEATURED -> HomeScreen(
-                                catalog, continueWatching, store, favorites, true,
-                                { sec ->
-                                    when (sec) {
-                                        Section.LIVE -> state.tab = NavTab.TV
-                                        Section.MOVIES -> state.tab = NavTab.MOVIES
-                                        Section.SERIES -> state.tab = NavTab.SERIES
-                                        Section.FAVS -> state.overlay = ClassicOverlay.FAVS
-                                        Section.HOME -> state.tab = NavTab.FEATURED
-                                    }
-                                },
-                                onPlay, onSeries, onToggleFavorite
-                            )
-                            NavTab.MOVIES -> MoviesScreen(fMovies, favorites, true, onPlay)
-                            NavTab.SERIES -> SeriesScreen(fSeries, favorites, true) { onSeries(it) }
+                            NavTab.FEATURED -> {
+                                val (top, rows) = remember(catalog) { buildShow(catalog, ShowMode.FEATURED) }
+                                Showcase(top, rows, continueWatching, emptyList(), { openShow(it, onMovie, onSeries) }, onPlay, "Sin contenido")
+                            }
+                            NavTab.MOVIES -> {
+                                val (top, rows) = remember(catalog) { buildShow(catalog, ShowMode.MOVIES) }
+                                Showcase(top, rows, emptyList(), emptyList(), { openShow(it, onMovie, onSeries) }, onPlay, "Sin películas")
+                            }
+                            NavTab.SERIES -> {
+                                val (top, rows) = remember(catalog) { buildShow(catalog, ShowMode.SERIES) }
+                                Showcase(top, rows, emptyList(), emptyList(), { openShow(it, onMovie, onSeries) }, onPlay, "Sin series")
+                            }
                             NavTab.KIDS -> {
                                 val c = remember(catalog) { catalog.byCategory(KIDS_RE, ANIME_RE) }
-                                CatalogRails(c, favorites, onPlay, onSeries, "Sin contenido infantil")
+                                val (top, rows) = remember(c) { buildShow(c, ShowMode.MIXED) }
+                                Showcase(top, rows, emptyList(), remember(c) { c.live.take(60) }, { openShow(it, onMovie, onSeries) }, onPlay, "Sin contenido infantil")
                             }
                             NavTab.ANIME -> {
                                 val c = remember(catalog) { catalog.byCategory(ANIME_RE) }
-                                CatalogRails(c, favorites, onPlay, onSeries, "Sin anime")
+                                val (top, rows) = remember(c) { buildShow(c, ShowMode.MIXED) }
+                                Showcase(top, rows, emptyList(), remember(c) { c.live.take(60) }, { openShow(it, onMovie, onSeries) }, onPlay, "Sin anime")
                             }
-                            else -> ExploreTab(catalog, favorites, onPlay, onSeries)
+                            else -> ExploreTab(catalog, favorites, openOrPlay, onSeries)
                         }
                     }
                 }
@@ -230,11 +240,11 @@ private fun SideMenu(current: NavTab, highlight: Boolean, widthDp: Float, onSele
                     .padding(vertical = (8 * s).dp, horizontal = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(t.icon, t.label, tint = if (active) Cm.Gold else MenuIdle, modifier = Modifier.size((20 * s).dp))
+                Icon(t.icon, t.label, tint = if (active) Color(0xFF4D7CFF) else MenuIdle, modifier = Modifier.size((20 * s).dp))
                 Spacer(Modifier.width((10 * s).dp))
                 Text(
-                    t.label, color = if (active) Color.White else MenuIdle,
-                    fontSize = (16 * s).sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    t.label, color = if (active) CineRed else MenuIdle,
+                    fontSize = (16 * s).sp, fontWeight = FontWeight.Normal,
                     maxLines = 1, overflow = TextOverflow.Clip
                 )
             }

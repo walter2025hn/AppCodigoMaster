@@ -78,6 +78,7 @@ private fun CodigoMasterApp(store: Store) {
     var search by remember { mutableStateOf("") }
     var section by remember { mutableStateOf(Section.HOME) }
     var selectedSeries by remember { mutableStateOf<Series?>(null) }
+    var selectedMovie by remember { mutableStateOf<Entry?>(null) }
     var play by remember { mutableStateOf<PlayRequest?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var favorites by remember { mutableStateOf(store.favorites()) }
@@ -157,14 +158,17 @@ private fun CodigoMasterApp(store: Store) {
                 recents = store.recents()
             }
         } else if (classic) {
-            val detail = selectedSeries
-            if (detail != null) {
+            val detailSeries = selectedSeries
+            val detailMovie = selectedMovie
+            if (detailSeries != null || detailMovie != null) {
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                    SeriesDetail(
-                        detail, detail.key in favorites, true, store,
-                        onToggleFavorite = { toggleFavorite(detail.key) },
+                    DetailScreen(
+                        movie = detailMovie, series = detailSeries, catalog = catalog, store = store,
+                        favorites = favorites, onToggleFavorite = ::toggleFavorite,
                         onPlay = { play = it },
-                        onBack = { selectedSeries = null }
+                        onMovie = { selectedMovie = it; selectedSeries = null },
+                        onSeries = { selectedSeries = it; selectedMovie = null },
+                        onBack = { selectedSeries = null; selectedMovie = null }
                     )
                 }
             } else {
@@ -182,7 +186,8 @@ private fun CodigoMasterApp(store: Store) {
                     loading = loading, message = message, statusError = statusError,
                     blocker = blocker,
                     onRefresh = ::refresh, onSettings = { showSettings = true },
-                    onPlay = { play = it }, onSeries = { selectedSeries = it },
+                    onPlay = { play = it }, onSeries = { selectedSeries = it; selectedMovie = null },
+                    onMovie = { selectedMovie = it; selectedSeries = null },
                     onToggleFavorite = ::toggleFavorite
                 )
             }

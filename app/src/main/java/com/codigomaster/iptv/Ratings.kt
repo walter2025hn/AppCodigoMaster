@@ -24,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -72,6 +73,89 @@ class RatingsRepo(private val store: Store) {
         if (result != null) { memory[key] = result; store.cachePublic(key, result) }
         return result?.let { parse(it) }
     }
+
+    // ───────────── Metadatos para la ficha (sinopsis, director, reparto, fondo) ─────────────
+    private val metaMemory = ConcurrentHashMap<String, String>()
+
+    /** Ficha de TMDB (en español). Null si no hay clave, no existe el título o falló la red. */
+    suspend fun meta(rawTitle: String, kind: RatingKind): Meta? {
+        if (kind == RatingKind.CHANNEL || !enabled) return null
+        val (title, year) = cleanTitle(rawTitle)
+        if (title.length < 2) return null
+        val key = "META|${kind.name}|${title.lowercase(Locale.ROOT)}|${year.orEmpty()}"
+        metaMemory[key]?.let { return parseMeta(it) }
+        store.cachedPublic(key)?.let { metaMemory[key] = it; return parseMeta(it) }
+        delay(300) // si el título sale de pantalla antes, la consulta se cancela
+        val result = gate.withPermit { withContext(Dispatchers.IO) { fetchMeta(title, year, kind) } }
+        if (result != null) { metaMemory[key] = result; store.cachePublic(key, result) }
+        return result?.let { parseMeta(it) }
+    }
+
+    private fun parseMeta(v: String): Meta? {
+        if (v == "-") return null
+        return try {
+            val o = JSONObject(v)
+            fun list(k: String): List<String> {
+                val a = o.optJSONArray(k) ?: return emptyList()
+                return (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }
+            }
+            Meta(o.optString("o"), list("g"), o.optString("d"), list("c"), o.optString("k"), o.optString("t"), o.optString("n"), o.optString("b"))
+        } catch (_: Exception) { null }
+    }
+
+    /** JSON compacto de la ficha, «-» si no existe, null si falló la red (no se guarda). */
+    private fun fetchMeta(title: String, year: String?, kind: RatingKind): String? {
+        val tv = kind == RatingKind.SERIES
+        val years: List<String?> = if (year != null) listOf(year, null) else listOf(null)
+        var id = 0
+        for (y in years) {
+            val json = request(title, y, kind) ?: return null
+            val results = json.optJSONArray("results") ?: continue
+            if (results.length() > 0) { id = results.getJSONObject(0).optInt("id"); break }
+        }
+        if (id == 0) return "-"
+        val d = getJson("https://api.themoviedb.org/3/${if (tv) "tv" else "movie"}/$id?language=es-MX&append_to_response=credits") ?: return null
+        val genres = JSONArray()
+        d.optJSONArray("genres")?.let { g -> for (i in 0 until g.length()) genres.put(g.getJSONObject(i).str("name")) }
+        val credits = d.optJSONObject("credits")
+        var director = ""
+        if (tv) {
+            d.optJSONArray("created_by")?.let { c -> if (c.length() > 0) director = c.getJSONObject(0).str("name") }
+        } else {
+            credits?.optJSONArray("crew")?.let { c ->
+                for (i in 0 until c.length()) {
+                    val m = c.getJSONObject(i)
+                    if (m.str("job") == "Director") { director = m.str("name"); break }
+                }
+            }
+        }
+        val cast = JSONArray()
+        credits?.optJSONArray("cast")?.let { c -> for (i in 0 until minOf(c.length(), 3)) cast.put(c.getJSONObject(i).str("name")) }
+        val code = if (tv) d.optJSONArray("origin_country")?.optString(0).orEmpty()
+        else d.optJSONArray("production_countries")?.optJSONObject(0)?.str("iso_3166_1").orEmpty()
+        val country = if (code.isNotBlank()) Locale("", code).getDisplayCountry(Locale("es")) else ""
+        val back = d.str("backdrop_path")
+        return JSONObject()
+            .put("o", d.str("overview")).put("g", genres).put("d", director).put("c", cast).put("k", country)
+            .put("t", d.str(if (tv) "first_air_date" else "release_date"))
+            .put("n", d.str(if (tv) "original_name" else "original_title"))
+            .put("b", if (back.isNotBlank()) "https://image.tmdb.org/t/p/w780$back" else "")
+            .toString()
+    }
+
+    private fun getJson(url: String): JSONObject? = try {
+        val key = store.tmdbKey.trim()
+        val bearer = key.startsWith("eyJ")
+        val full = if (bearer) url else url + (if (url.contains('?')) "&" else "?") + "api_key=" + URLEncoder.encode(key, "UTF-8")
+        val conn = (URL(full).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 8000; readTimeout = 8000
+            setRequestProperty("Accept", "application/json")
+            if (bearer) setRequestProperty("Authorization", "Bearer $key")
+        }
+        try {
+            if (conn.responseCode == 200) JSONObject(conn.inputStream.bufferedReader().use { it.readText() }) else null
+        } finally { conn.disconnect() }
+    } catch (_: Exception) { null }
 
     /** Solo se muestra si hay un mínimo de votos de la gente. */
     private fun parse(v: String): Double? {
@@ -197,4 +281,28 @@ fun RateDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Listo", color = Cm.Gold, fontWeight = FontWeight.Bold) } }
     )
+}
+
+/** Ficha ampliada de una película o serie (TMDB). */
+data class Meta(
+    val overview: String,
+    val genres: List<String>,
+    val director: String,
+    val cast: List<String>,
+    val country: String,
+    val date: String,
+    val original: String,
+    val backdrop: String
+)
+
+private fun JSONObject.str(k: String): String = if (isNull(k)) "" else optString(k)
+
+/** Ficha de TMDB para un título; null mientras carga o si no hay clave / no se encontró. */
+@Composable
+fun rememberMeta(title: String, kind: RatingKind): Meta? {
+    val repo = LocalRatings.current
+    val m by produceState<Meta?>(null, title, kind) {
+        value = if (repo != null && kind != RatingKind.CHANNEL) repo.meta(title, kind) else null
+    }
+    return m
 }

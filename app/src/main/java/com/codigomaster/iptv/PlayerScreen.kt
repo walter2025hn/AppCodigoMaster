@@ -54,7 +54,9 @@ data class PlayRequest(
     val index: Int,
     val live: Boolean,
     val seriesKey: String? = null,
-    val seriesTitle: String? = null
+    val seriesTitle: String? = null,
+    /** Abre el panel de audio / subtítulos / pantalla nada más empezar (botones Idioma y Resolución de la ficha). */
+    val openMenu: Boolean = false
 )
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
@@ -175,7 +177,7 @@ fun PlayerScreen(
 
     var visible by remember { mutableStateOf(true) }
     var poke by remember { mutableIntStateOf(0) }
-    var showMenu by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(request.openMenu) }
     var aspect by remember { mutableStateOf(AspectMode.FIT) }
     val playing = controller?.state?.playing == true
 
