@@ -101,3 +101,10 @@ Instala «Downloader» desde la tienda de Amazon, activa Ajustes › Mi Fire TV 
 - Barra superior: buscar, categorías, historial, mi lista, ajustes (campana), wifi (actualizar lista) y reloj.
 - KIDS y ANIME agrupan canales, películas y series por categoría; EXPLORAR navega todas las categorías.
 - La app queda en horizontal (móvil, tablet, Android TV y Fire TV). En pantallas muy estrechas se conserva el diseño anterior.
+
+## Versión 4.1.0 — Más espacio para el vídeo y filtros nuevos
+- Interfaz adaptativa: tamaños de texto, iconos y listas se ajustan a la altura de la pantalla (móvil, tablet y TV).
+- Menú y lista de canales más estrechos: la vista previa del canal ocupa todo el espacio libre.
+- Pantalla inmersiva (sin barras del sistema; desliza desde el borde para verlas).
+- Botón de categoría sobre la vista previa para filtrar canales.
+- El icono de filtro abre un panel con Tipo · Género · Año · País · Audio y cuadrícula de pósters con nota y etiqueta CC.
