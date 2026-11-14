@@ -79,8 +79,25 @@ Usa únicamente listas y transmisiones para las que tengas autorización.
 ### Mando a distancia
 - Riel lateral y botones de la barra superior con foco dorado visible.
 - Texto ~15 % mayor en TV y márgenes seguros.
-- En TV, canales: mantén OK pulsado para añadir/quitar de Mi lista.
+- Mantén OK pulsado (o pulsación larga) sobre una película, serie o canal para calificarlo con estrellas (en canales también añade/quita de Mi lista).
 - Manifiesto sin requisitos de pantalla táctil, cámara, micrófono ni orientación vertical.
 
 ### Instalar en Fire Stick
 Instala «Downloader» desde la tienda de Amazon, activa Ajustes › Mi Fire TV › Opciones para desarrolladores › Instalar apps desconocidas, y descarga el APK.
+
+### Destacadas del inicio
+- Altura adaptable: el contenido ya no se sale de la pantalla en TV.
+- Los botones no cambian con la página, así el foco del mando no se pierde; flechas ‹ › para avanzar.
+- La rotación automática se detiene mientras el mando está sobre las destacadas.
+
+### Calificaciones
+- **Público:** nota 0-10 de los votos de usuarios de TMDB (mínimo 10 votos). Requiere una clave gratuita de themoviedb.org, que se pega en Ajustes. Cada título se consulta una vez y se guarda en el equipo.
+- **Tuya:** 1-5 estrellas (se muestra ×2 en escala 10 y tiene prioridad sobre la del público). Los canales no tienen base pública: solo cuentan tus estrellas.
+
+
+## Versión 4.0.0 — Nueva interfaz horizontal
+- Menú vertical a la izquierda: TV, DESTACAD., PELICULA, SERIES, KIDS, ANIME y EXPLORAR.
+- **TV:** vista previa del canal en vivo en el centro (toca o pulsa OK para pantalla completa) y lista de canales a la derecha con flechas ▲▼.
+- Barra superior: buscar, categorías, historial, mi lista, ajustes (campana), wifi (actualizar lista) y reloj.
+- KIDS y ANIME agrupan canales, películas y series por categoría; EXPLORAR navega todas las categorías.
+- La app queda en horizontal (móvil, tablet, Android TV y Fire TV). En pantallas muy estrechas se conserva el diseño anterior.
