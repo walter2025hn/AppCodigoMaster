@@ -23,7 +23,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,7 +55,10 @@ enum class NavTab(val label: String, val icon: ImageVector) {
     EXPLORE("EXPLORAR", Icons.Filled.Explore)
 }
 
-enum class ClassicOverlay { FAVS, RECENTS }
+enum class ClassicOverlay { FAVS, RECENTS, FILTER }
+
+/** Escala de la interfaz según la altura de pantalla (móvil horizontal ≈ 0.8, TV ≈ 1.2). */
+val LocalUiScale = compositionLocalOf { 1f }
 
 /** Estado que sobrevive mientras se abre y cierra el reproductor a pantalla completa. */
 class ClassicState {
@@ -58,16 +66,25 @@ class ClassicState {
     var overlay by mutableStateOf<ClassicOverlay?>(null)
     var group by mutableStateOf<String?>(null)
     var channelUrl by mutableStateOf<String?>(null)
+
+    // Panel de filtros (películas / series / kids / anime)
+    var fType by mutableIntStateOf(0)
+    var fGenre by mutableStateOf<String?>(null)
+    var fYear by mutableStateOf<String?>(null)
+    var fCountry by mutableStateOf<String?>(null)
+    var fAudio by mutableStateOf<String?>(null)
+    internal var filterCache: List<FItem>? = null
+    internal var filterCacheFor: Catalog? = null
 }
 
 private val Pure = Color(0xFF000000)
 private val Circle = Color(0xFF2B2B2B)
 private val MenuIdle = Color(0xFFB9B9B9)
 
-private val KIDS_RE = Regex("kids|infantil|ni(ñ|n)os|cartoon|disney|nick|junior|dibujos|animaci", RegexOption.IGNORE_CASE)
-private val ANIME_RE = Regex("anime|crunchy|shonen|manga", RegexOption.IGNORE_CASE)
+internal val KIDS_RE = Regex("kids|infantil|ni(ñ|n)os|cartoon|disney|nick|junior|dibujos|animaci", RegexOption.IGNORE_CASE)
+internal val ANIME_RE = Regex("anime|crunchy|shonen|manga", RegexOption.IGNORE_CASE)
 
-private fun Catalog.byCategory(re: Regex, exclude: Regex? = null): Catalog {
+internal fun Catalog.byCategory(re: Regex, exclude: Regex? = null): Catalog {
     fun ok(vararg s: String) = s.any { re.containsMatchIn(it) } && (exclude == null || s.none { x -> exclude.containsMatchIn(x) })
     return Catalog(
         live.filter { ok(it.group, it.name) },
@@ -101,9 +118,22 @@ fun ClassicHome(
     onToggleFavorite: (String) -> Unit
 ) {
     val tv = LocalTv.current
+    val cfg = LocalConfiguration.current
+    val s = (cfg.screenHeightDp / 400f).coerceIn(0.72f, 1.2f)
+    val menuW = (cfg.screenWidthDp * 0.13f).coerceIn(104f, 190f)
     var searchOpen by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
     val liveGroups = remember(catalog) { groupCounts(catalog.live, 200) }
+
+    // Pantalla inmersiva: sin barras del sistema para dar más espacio al vídeo y al contenido.
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.context as? android.app.Activity)?.window
+        val ctl = window?.let { WindowCompat.getInsetsController(it, view) }
+        ctl?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        ctl?.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose { }
+    }
 
     BackHandler(enabled = search.isNotEmpty() || state.overlay != null || state.tab != NavTab.TV) {
         when {
@@ -113,61 +143,64 @@ fun ClassicHome(
         }
     }
 
-    Row(
-        Modifier.fillMaxSize().background(Pure)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .then(if (tv) Modifier.padding(horizontal = 20.dp, vertical = 6.dp) else Modifier)
-    ) {
-        SideMenu(state.tab, state.overlay == null) { tab ->
-            state.tab = tab; state.overlay = null; onSearch(""); searchOpen = false
-        }
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            ClassicTopBar(
-                search = search, onSearch = onSearch, searchOpen = searchOpen, onSearchOpen = { searchOpen = it },
-                filterActive = state.group != null,
-                overlay = state.overlay,
-                loading = loading, statusError = statusError, message = message,
-                onFilter = { showPicker = true },
-                onHistory = { state.overlay = if (state.overlay == ClassicOverlay.RECENTS) null else ClassicOverlay.RECENTS },
-                onProfile = { state.overlay = if (state.overlay == ClassicOverlay.FAVS) null else ClassicOverlay.FAVS },
-                onBell = onSettings,
-                onWifi = onRefresh
-            )
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when {
-                    blocker == 1 -> LoadingState()
-                    blocker == 2 -> EmptyState(Icons.Filled.CloudOff, "Sin contenido", "No pudimos cargar la lista. Toca el icono de wifi para reintentar.")
-                    state.overlay == ClassicOverlay.FAVS -> FavoritesScreen(catalog, favorites, true, onPlay, onSeries)
-                    state.overlay == ClassicOverlay.RECENTS ->
-                        if (continueWatching.isEmpty()) EmptyState(Icons.Filled.History, "Sin historial", "Aquí aparecerán las películas y episodios que empieces a ver.")
-                        else CatalogRails(Catalog(emptyList(), continueWatching, emptyList()), favorites, onPlay, onSeries, "Sin historial")
-                    state.tab == NavTab.TV -> TvTab(state, store, fLive, favorites, onPlay, onToggleFavorite)
-                    q.isNotBlank() -> SearchResults(fLive, fMovies, fSeries, true, onPlay, onSeries)
-                    else -> when (state.tab) {
-                        NavTab.FEATURED -> HomeScreen(
-                            catalog, continueWatching, store, favorites, true,
-                            { s ->
-                                when (s) {
-                                    Section.LIVE -> state.tab = NavTab.TV
-                                    Section.MOVIES -> state.tab = NavTab.MOVIES
-                                    Section.SERIES -> state.tab = NavTab.SERIES
-                                    Section.FAVS -> state.overlay = ClassicOverlay.FAVS
-                                    Section.HOME -> state.tab = NavTab.FEATURED
-                                }
-                            },
-                            onPlay, onSeries, onToggleFavorite
-                        )
-                        NavTab.MOVIES -> MoviesScreen(fMovies, favorites, true, onPlay)
-                        NavTab.SERIES -> SeriesScreen(fSeries, favorites, true) { onSeries(it) }
-                        NavTab.KIDS -> {
-                            val c = remember(catalog) { catalog.byCategory(KIDS_RE, ANIME_RE) }
-                            CatalogRails(c, favorites, onPlay, onSeries, "Sin contenido infantil")
+    CompositionLocalProvider(LocalUiScale provides s) {
+        if (state.overlay == ClassicOverlay.FILTER) {
+            FilterScreen(state, catalog, onPlay, onSeries) { state.overlay = null }
+        } else Row(
+            Modifier.fillMaxSize().background(Pure)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .then(if (tv) Modifier.padding(horizontal = 16.dp, vertical = 4.dp) else Modifier)
+        ) {
+            SideMenu(state.tab, state.overlay == null, menuW) { tab ->
+                state.tab = tab; state.overlay = null; onSearch(""); searchOpen = false
+            }
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                ClassicTopBar(
+                    search = search, onSearch = onSearch, searchOpen = searchOpen, onSearchOpen = { searchOpen = it },
+                    overlay = state.overlay,
+                    loading = loading, statusError = statusError, message = message,
+                    onFilter = { state.overlay = ClassicOverlay.FILTER },
+                    onHistory = { state.overlay = if (state.overlay == ClassicOverlay.RECENTS) null else ClassicOverlay.RECENTS },
+                    onProfile = { state.overlay = if (state.overlay == ClassicOverlay.FAVS) null else ClassicOverlay.FAVS },
+                    onBell = onSettings,
+                    onWifi = onRefresh
+                )
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    when {
+                        blocker == 1 -> LoadingState()
+                        blocker == 2 -> EmptyState(Icons.Filled.CloudOff, "Sin contenido", "No pudimos cargar la lista. Toca el icono de wifi para reintentar.")
+                        state.overlay == ClassicOverlay.FAVS -> FavoritesScreen(catalog, favorites, true, onPlay, onSeries)
+                        state.overlay == ClassicOverlay.RECENTS ->
+                            if (continueWatching.isEmpty()) EmptyState(Icons.Filled.History, "Sin historial", "Aquí aparecerán las películas y episodios que empieces a ver.")
+                            else CatalogRails(Catalog(emptyList(), continueWatching, emptyList()), favorites, onPlay, onSeries, "Sin historial")
+                        state.tab == NavTab.TV -> TvTab(state, store, fLive, favorites, cfg.screenWidthDp, onPlay, onToggleFavorite) { showPicker = true }
+                        q.isNotBlank() -> SearchResults(fLive, fMovies, fSeries, true, onPlay, onSeries)
+                        else -> when (state.tab) {
+                            NavTab.FEATURED -> HomeScreen(
+                                catalog, continueWatching, store, favorites, true,
+                                { sec ->
+                                    when (sec) {
+                                        Section.LIVE -> state.tab = NavTab.TV
+                                        Section.MOVIES -> state.tab = NavTab.MOVIES
+                                        Section.SERIES -> state.tab = NavTab.SERIES
+                                        Section.FAVS -> state.overlay = ClassicOverlay.FAVS
+                                        Section.HOME -> state.tab = NavTab.FEATURED
+                                    }
+                                },
+                                onPlay, onSeries, onToggleFavorite
+                            )
+                            NavTab.MOVIES -> MoviesScreen(fMovies, favorites, true, onPlay)
+                            NavTab.SERIES -> SeriesScreen(fSeries, favorites, true) { onSeries(it) }
+                            NavTab.KIDS -> {
+                                val c = remember(catalog) { catalog.byCategory(KIDS_RE, ANIME_RE) }
+                                CatalogRails(c, favorites, onPlay, onSeries, "Sin contenido infantil")
+                            }
+                            NavTab.ANIME -> {
+                                val c = remember(catalog) { catalog.byCategory(ANIME_RE) }
+                                CatalogRails(c, favorites, onPlay, onSeries, "Sin anime")
+                            }
+                            else -> ExploreTab(catalog, favorites, onPlay, onSeries)
                         }
-                        NavTab.ANIME -> {
-                            val c = remember(catalog) { catalog.byCategory(ANIME_RE) }
-                            CatalogRails(c, favorites, onPlay, onSeries, "Sin anime")
-                        }
-                        else -> ExploreTab(catalog, favorites, onPlay, onSeries)
                     }
                 }
             }
@@ -184,22 +217,24 @@ fun ClassicHome(
 // ───────────────────────────── Menú lateral ─────────────────────────────
 
 @Composable
-private fun SideMenu(current: NavTab, highlight: Boolean, onSelect: (NavTab) -> Unit) {
+private fun SideMenu(current: NavTab, highlight: Boolean, widthDp: Float, onSelect: (NavTab) -> Unit) {
+    val s = LocalUiScale.current
     Column(
-        Modifier.fillMaxHeight().width(188.dp).padding(start = 20.dp, end = 4.dp),
+        Modifier.fillMaxHeight().width(widthDp.dp).padding(start = (14 * s).dp, end = 2.dp),
         verticalArrangement = Arrangement.Center
     ) {
         NavTab.values().forEach { t ->
             val active = highlight && t == current
             Row(
-                Modifier.fillMaxWidth().tvClickable(RoundedCornerShape(10.dp), 1.04f) { onSelect(t) }.padding(vertical = 11.dp, horizontal = 4.dp),
+                Modifier.fillMaxWidth().tvClickable(RoundedCornerShape(10.dp), 1.04f) { onSelect(t) }
+                    .padding(vertical = (8 * s).dp, horizontal = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(t.icon, t.label, tint = if (active) Cm.Gold else MenuIdle, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(14.dp))
+                Icon(t.icon, t.label, tint = if (active) Cm.Gold else MenuIdle, modifier = Modifier.size((20 * s).dp))
+                Spacer(Modifier.width((10 * s).dp))
                 Text(
                     t.label, color = if (active) Color.White else MenuIdle,
-                    fontSize = 19.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    fontSize = (16 * s).sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1, overflow = TextOverflow.Clip
                 )
             }
@@ -211,21 +246,23 @@ private fun SideMenu(current: NavTab, highlight: Boolean, onSelect: (NavTab) -> 
 
 @Composable
 private fun RoundIcon(icon: ImageVector, description: String, tint: Color = Color.White, onClick: () -> Unit) {
+    val s = LocalUiScale.current
     Box(
-        Modifier.padding(horizontal = 6.dp).size(46.dp).tvClickable(CircleShape, 1.1f) { onClick() }.background(Circle),
+        Modifier.padding(horizontal = (4 * s).dp).size((38 * s).dp).tvClickable(CircleShape, 1.1f) { onClick() }.background(Circle),
         contentAlignment = Alignment.Center
-    ) { Icon(icon, description, tint = tint, modifier = Modifier.size(24.dp)) }
+    ) { Icon(icon, description, tint = tint, modifier = Modifier.size((20 * s).dp)) }
 }
 
 @Composable
 private fun ClassicTopBar(
     search: String, onSearch: (String) -> Unit, searchOpen: Boolean, onSearchOpen: (Boolean) -> Unit,
-    filterActive: Boolean, overlay: ClassicOverlay?,
+    overlay: ClassicOverlay?,
     loading: Boolean, statusError: Boolean, message: String,
     onFilter: () -> Unit, onHistory: () -> Unit, onProfile: () -> Unit, onBell: () -> Unit, onWifi: () -> Unit
 ) {
+    val s = LocalUiScale.current
     Row(
-        Modifier.fillMaxWidth().padding(top = 8.dp, end = 18.dp, start = 8.dp),
+        Modifier.fillMaxWidth().padding(top = (6 * s).dp, end = (14 * s).dp, start = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (message.isNotBlank()) Text(
@@ -234,41 +271,42 @@ private fun ClassicTopBar(
         ) else Spacer(Modifier.weight(1f))
 
         if (searchOpen || search.isNotEmpty()) {
-            SearchField(search, onSearch, Modifier.width(300.dp)) { onSearch(""); onSearchOpen(false) }
-            Spacer(Modifier.width(6.dp))
+            SearchField(search, onSearch, Modifier.width((280 * s).dp)) { onSearch(""); onSearchOpen(false) }
+            Spacer(Modifier.width(4.dp))
         } else RoundIcon(Icons.Filled.Search, "Buscar") { onSearchOpen(true) }
-        RoundIcon(Icons.Filled.FilterList, "Categorías", if (filterActive) Cm.Gold else Color.White, onFilter)
+        RoundIcon(Icons.Filled.FilterList, "Filtros", Color.White, onFilter)
         RoundIcon(Icons.Filled.History, "Historial", if (overlay == ClassicOverlay.RECENTS) Cm.Gold else Color.White, onHistory)
         RoundIcon(Icons.Filled.Person, "Mi lista", if (overlay == ClassicOverlay.FAVS) Cm.Gold else Color.White, onProfile)
         RoundIcon(Icons.Filled.Notifications, "Ajustes", Color.White, onBell)
 
-        Spacer(Modifier.width(10.dp))
-        Box(Modifier.width(1.dp).height(20.dp).background(Color(0xFF555555)))
-        Spacer(Modifier.width(14.dp))
-        if (loading) Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(Modifier.size(22.dp), color = Cm.Gold, strokeWidth = 2.dp)
-        } else Box(Modifier.size(34.dp).tvClickable(CircleShape, 1.12f) { onWifi() }, contentAlignment = Alignment.Center) {
+        Spacer(Modifier.width((8 * s).dp))
+        Box(Modifier.width(1.dp).height((16 * s).dp).background(Color(0xFF555555)))
+        Spacer(Modifier.width((10 * s).dp))
+        if (loading) Box(Modifier.size((30 * s).dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size((18 * s).dp), color = Cm.Gold, strokeWidth = 2.dp)
+        } else Box(Modifier.size((30 * s).dp).tvClickable(CircleShape, 1.12f) { onWifi() }, contentAlignment = Alignment.Center) {
             Icon(
                 if (statusError) Icons.Filled.WifiOff else Icons.Filled.Wifi, "Actualizar lista",
-                tint = if (statusError) Cm.Danger else Color.White, modifier = Modifier.size(28.dp)
+                tint = if (statusError) Cm.Danger else Color.White, modifier = Modifier.size((24 * s).dp)
             )
         }
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width((10 * s).dp))
         ClockText()
     }
 }
 
 @Composable
 private fun ClockText() {
+    val s = LocalUiScale.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (isActive) { now = System.currentTimeMillis(); delay(15_000) } }
     val minute = now / 60_000
     val time = remember(minute) { SimpleDateFormat("hh:mm", Locale.US).format(Date(now)) }
     val ampm = remember(minute) { SimpleDateFormat("a", Locale.US).format(Date(now)) }
     Row(verticalAlignment = Alignment.Bottom) {
-        Text(time, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.width(4.dp))
-        Text(ampm, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(bottom = 4.dp))
+        Text(time, color = Color.White, fontSize = (22 * s).sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.width(3.dp))
+        Text(ampm, color = Color.White, fontSize = (12 * s).sp, modifier = Modifier.padding(bottom = 3.dp))
     }
 }
 
@@ -280,9 +318,12 @@ private fun TvTab(
     store: Store,
     live: List<Entry>,
     favorites: Set<String>,
+    screenWidthDp: Int,
     onPlay: (PlayRequest) -> Unit,
-    onToggleFavorite: (String) -> Unit
+    onToggleFavorite: (String) -> Unit,
+    onPickGroup: () -> Unit
 ) {
+    val s = LocalUiScale.current
     val shown = remember(live, state.group) { if (state.group == null) live else live.filter { it.group == state.group } }
     if (shown.isEmpty()) {
         EmptyState(Icons.Filled.LiveTv, "Sin canales", "No hay canales que coincidan con tu búsqueda o categoría.")
@@ -290,28 +331,30 @@ private fun TvTab(
     }
     val current = remember(shown, state.channelUrl) { shown.firstOrNull { it.url == state.channelUrl } ?: shown.first() }
     val currentIndex = shown.indexOf(current)
+    val listW = (screenWidthDp * 0.21f).coerceIn(160f, 290f)
 
-    Row(Modifier.fillMaxSize().padding(start = 4.dp, end = 18.dp, top = 6.dp, bottom = 14.dp)) {
-        BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().padding(end = 8.dp), contentAlignment = Alignment.Center) {
+    Row(Modifier.fillMaxSize().padding(start = 2.dp, end = (10 * s).dp, top = (4 * s).dp, bottom = (8 * s).dp)) {
+        // La vista previa ocupa todo el espacio disponible (16:9 como máximo).
+        BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().padding(end = 4.dp), contentAlignment = Alignment.Center) {
             val w = minOf(maxWidth, maxHeight * (16f / 9f))
-            LivePreview(current, store, Modifier.width(w).aspectRatio(16f / 9f)) {
+            LivePreview(current, store, Modifier.width(w).aspectRatio(16f / 9f), state.group ?: "Todos", onPickGroup) {
                 onPlay(PlayRequest(shown, currentIndex.coerceAtLeast(0), true))
             }
         }
-        Column(Modifier.width(286.dp).fillMaxHeight().padding(start = 10.dp)) {
+        Column(Modifier.width(listW.dp).fillMaxHeight().padding(start = (6 * s).dp)) {
             val ls = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 1).coerceAtLeast(0))
             Icon(
                 Icons.Filled.ArrowDropUp, null, tint = Color(0xFFBBBBBB),
-                modifier = Modifier.align(Alignment.CenterHorizontally).size(30.dp).alpha(if (ls.canScrollBackward) 1f else 0f)
+                modifier = Modifier.align(Alignment.CenterHorizontally).size((24 * s).dp).alpha(if (ls.canScrollBackward) 1f else 0f)
             )
-            LazyColumn(Modifier.weight(1f), state = ls, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            LazyColumn(Modifier.weight(1f), state = ls, verticalArrangement = Arrangement.spacedBy((8 * s).dp)) {
                 itemsIndexed(shown, contentType = { _, _ -> "ch" }) { _, e ->
                     ChannelTile(e, e.url == current.url, e.url in favorites, { onToggleFavorite(e.url) }) { state.channelUrl = e.url }
                 }
             }
             Icon(
                 Icons.Filled.ArrowDropDown, null, tint = Color(0xFFBBBBBB),
-                modifier = Modifier.align(Alignment.CenterHorizontally).size(30.dp).alpha(if (ls.canScrollForward) 1f else 0f)
+                modifier = Modifier.align(Alignment.CenterHorizontally).size((24 * s).dp).alpha(if (ls.canScrollForward) 1f else 0f)
             )
         }
     }
@@ -319,32 +362,34 @@ private fun TvTab(
 
 @Composable
 private fun ChannelTile(entry: Entry, selected: Boolean, favorite: Boolean, onToggleFavorite: () -> Unit, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
+    val s = LocalUiScale.current
+    val shape = RoundedCornerShape(14.dp)
     var showRate by remember { mutableStateOf(false) }
     if (showRate) RateDialog(entry.name, entry.url, RatingKind.CHANNEL, { showRate = false }, favorite, onToggleFavorite)
     Row(
         Modifier.fillMaxWidth()
             .tvClickableLong(shape, 1.03f, { showRate = true }, onClick)
             .background(if (selected) Color(0x26FFFFFF) else Color.Transparent)
-            .padding(4.dp),
+            .padding(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Poster(
             entry.logo,
-            Modifier.size(78.dp).clip(RoundedCornerShape(14.dp)).background(Circle).padding(8.dp),
+            Modifier.size((56 * s).dp).clip(RoundedCornerShape(12.dp)).background(Circle).padding((6 * s).dp),
             Icons.Filled.LiveTv, ContentScale.Fit, 160, 160
         )
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width((10 * s).dp))
         Text(
-            entry.name, color = Color.White, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            entry.name, color = Color.White, fontSize = (15 * s).sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            lineHeight = (18 * s).sp, modifier = Modifier.weight(1f)
         )
-        if (favorite) Icon(Icons.Filled.Favorite, "En mi lista", tint = Cm.Gold, modifier = Modifier.padding(start = 4.dp, end = 6.dp).size(16.dp))
+        if (favorite) Icon(Icons.Filled.Favorite, "En mi lista", tint = Cm.Gold, modifier = Modifier.padding(start = 3.dp, end = 4.dp).size(14.dp))
     }
 }
 
 @Composable
-private fun LivePreview(entry: Entry, store: Store, modifier: Modifier, onFullscreen: () -> Unit) {
+private fun LivePreview(entry: Entry, store: Store, modifier: Modifier, groupLabel: String, onPickGroup: () -> Unit, onFullscreen: () -> Unit) {
+    val s = LocalUiScale.current
     val context = LocalContext.current
     var engine by remember(entry.url) { mutableStateOf(if (store.engine == "VLC") EngineType.VLC else EngineType.EXO) }
     var tried by remember(entry.url) { mutableStateOf(setOf<EngineType>()) }
@@ -366,31 +411,43 @@ private fun LivePreview(entry: Entry, store: Store, modifier: Modifier, onFullsc
     }
     LaunchedEffect(controller) { while (isActive) { controller?.poll(); delay(500) } }
 
-    val shape = RoundedCornerShape(6.dp)
+    val shape = RoundedCornerShape(8.dp)
     Box(modifier.clip(shape).background(Color.Black)) {
         controller?.Content(Modifier.fillMaxSize(), AspectMode.FIT)
         // Capa transparente: recibe el clic / OK del mando y abre la pantalla completa.
         Box(Modifier.matchParentSize().tvClickable(shape, 1.0f) { onFullscreen() })
         Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(72.dp)
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height((64 * s).dp)
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
         )
         if (controller != null && !controller.state.ready && failure == null) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center).size(36.dp), color = Cm.Gold, strokeWidth = 3.dp)
+            CircularProgressIndicator(Modifier.align(Alignment.Center).size(32.dp), color = Cm.Gold, strokeWidth = 3.dp)
         }
         failure?.let {
             Column(Modifier.align(Alignment.Center).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.ErrorOutline, null, tint = Cm.Danger, modifier = Modifier.size(34.dp))
-                Spacer(Modifier.height(6.dp))
-                Text("Este canal no responde", color = Color.White, fontSize = 15.sp)
-                Text("Elige otro de la lista", color = Cm.Muted, fontSize = 12.sp)
+                Icon(Icons.Filled.ErrorOutline, null, tint = Cm.Danger, modifier = Modifier.size(30.dp))
+                Spacer(Modifier.height(4.dp))
+                Text("Este canal no responde", color = Color.White, fontSize = 14.sp)
+                Text("Elige otro de la lista", color = Cm.Muted, fontSize = 11.sp)
             }
         }
-        Row(Modifier.align(Alignment.BottomEnd).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(entry.name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 360.dp))
-            Spacer(Modifier.width(12.dp))
-            Box(Modifier.size(26.dp).clip(RoundedCornerShape(4.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Fullscreen, "Pantalla completa", tint = Color.White, modifier = Modifier.size(18.dp))
+        // Categoría actual (toca para cambiarla)
+        Row(
+            Modifier.align(Alignment.TopStart).padding(8.dp)
+                .tvClickable(RoundedCornerShape(50), 1.05f) { onPickGroup() }
+                .background(Color(0x99000000), RoundedCornerShape(50))
+                .padding(horizontal = (10 * s).dp, vertical = (4 * s).dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.FilterList, null, tint = Color.White, modifier = Modifier.size((14 * s).dp))
+            Spacer(Modifier.width(4.dp))
+            Text(groupLabel, color = Color.White, fontSize = (12 * s).sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 160.dp))
+        }
+        Row(Modifier.align(Alignment.BottomEnd).padding((10 * s).dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(entry.name, color = Color.White, fontSize = (17 * s).sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 360.dp))
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.size((24 * s).dp).clip(RoundedCornerShape(4.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Fullscreen, "Pantalla completa", tint = Color.White, modifier = Modifier.size((16 * s).dp))
             }
         }
     }
