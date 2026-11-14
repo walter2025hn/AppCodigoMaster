@@ -44,6 +44,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -145,9 +147,9 @@ private fun CodigoMasterApp(prefs: SharedPreferences) {
                     SeriesDetail(selectedSeries!!, onBack = { selectedSeries = null }, onPlay = { playing = it })
                 } else {
                     SearchBox(search, { search = it })
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(7.dp))
                     Navigation(section) { section = it }
-                    Text(message, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
+                    Text(message, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
                     when (section) {
                         "TV" -> MediaList(filteredLive, "Canales en vivo", "No se encontraron canales", onPlay = { playing = it })
                         "Películas" -> PosterGrid(filteredMovies, "Películas", onPlay = { playing = it })
@@ -169,14 +171,14 @@ private fun Header(loading: Boolean, onRefresh: () -> Unit) {
     val wideScreen = LocalConfiguration.current.screenWidthDp >= 700
     Row(
         Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF111B31), Navy)))
-            .padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 14.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(painterResource(R.drawable.brand_logo), null, Modifier.size(if (wideScreen) 76.dp else 58.dp).clip(RoundedCornerShape(13.dp)), contentScale = ContentScale.Crop)
+        Image(painterResource(R.drawable.brand_logo), null, Modifier.size(if (wideScreen) 48.dp else 38.dp).clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text("CODIGO MASTER", color = Gold, fontWeight = FontWeight.Black, fontSize = if (wideScreen) 27.sp else 19.sp, letterSpacing = 1.sp)
-            Text("IPTV  •  TU ENTRETENIMIENTO", color = Muted, fontSize = if (wideScreen) 14.sp else 10.sp, letterSpacing = 1.3.sp)
+            Text("CODIGO MASTER", color = Gold, fontWeight = FontWeight.Black, fontSize = if (wideScreen) 20.sp else 15.sp, letterSpacing = 0.7.sp)
+            Text("IPTV", color = Muted, fontSize = 8.sp, letterSpacing = 1.1.sp)
         }
         IconButton(onClick = onRefresh, enabled = !loading) {
             if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Gold, strokeWidth = 2.dp)
@@ -190,7 +192,7 @@ private fun SearchBox(value: String, onValue: (String) -> Unit) {
     val wideScreen = LocalConfiguration.current.screenWidthDp >= 700
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(15.dp))
-            .background(Panel2).padding(horizontal = 15.dp, vertical = 14.dp),
+            .background(Panel2).padding(horizontal = 13.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(Icons.Default.Search, null, tint = Muted)
@@ -220,12 +222,12 @@ private fun Navigation(current: String, onSelect: (String) -> Unit) {
                     .border(if (focused) 3.dp else 1.dp, if (focused) Color.White else if (active) Gold else Color(0xFF25344C), RoundedCornerShape(15.dp))
                     .onFocusChanged { focused = it.isFocused }
                     .clickable { onSelect(name) }.focusable()
-                    .padding(horizontal = 15.dp, vertical = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                Icon(icon, null, tint = if (active) Navy else Muted, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(7.dp))
+                Icon(icon, null, tint = if (active) Navy else Muted, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(name, color = if (active) Navy else Color.White, fontWeight = FontWeight.Bold, fontSize = if (wideScreen) 16.sp else 12.sp, maxLines = 1)
             }
         }
@@ -239,12 +241,12 @@ private fun HomeContent(
 ) {
     LazyColumn(contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 142.dp, max = 210.dp).clip(RoundedCornerShape(20.dp))) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 118.dp, max = 166.dp).clip(RoundedCornerShape(20.dp))) {
                 Image(painterResource(R.drawable.brand_logo), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xDD050914), Color(0x22050914)))))
                 Column(Modifier.align(Alignment.CenterStart).padding(18.dp)) {
-                    Text("EL PODER DEL ENTRETENIMIENTO", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    Text("Todo tu contenido\n en un solo lugar", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, lineHeight = 25.sp)
+                    Text("TU CINE · TU TV · TU MUNDO", color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("Entretenimiento\nsin límites", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black, lineHeight = 27.sp)
                     Text("Canales • Películas • Series", color = Color(0xFFE2EAF7), fontSize = 11.sp)
                 }
             }
@@ -274,8 +276,8 @@ private fun EntryRail(items: List<Entry>, onPlay: (Entry) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
         items(items, key = { it.url }) { entry ->
             var focused by remember(entry.url) { mutableStateOf(false) }
-            Column(Modifier.width(132.dp).border(if (focused) 3.dp else 0.dp, if (focused) Gold else Color.Transparent, RoundedCornerShape(13.dp)).onFocusChanged { focused = it.isFocused }.clickable { onPlay(entry) }.focusable().padding(3.dp)) {
-                Poster(entry.logo, Modifier.fillMaxWidth().height(158.dp))
+            Column(Modifier.width(124.dp).graphicsLayer { scaleX = if (focused) 1.035f else 1f; scaleY = if (focused) 1.035f else 1f }.border(if (focused) 2.dp else 0.dp, if (focused) Gold else Color.Transparent, RoundedCornerShape(13.dp)).onFocusChanged { focused = it.isFocused }.clickable { onPlay(entry) }.focusable().padding(3.dp)) {
+                Poster(entry.logo, Modifier.fillMaxWidth().height(148.dp))
                 Spacer(Modifier.height(7.dp))
                 Text(entry.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(entry.group, color = Muted, fontSize = 10.sp, maxLines = 1)
@@ -289,8 +291,8 @@ private fun SeriesRail(items: List<Series>, onSelect: (Series) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
         items(items, key = { it.title }) { s ->
             var focused by remember(s.title) { mutableStateOf(false) }
-            Column(Modifier.width(118.dp).border(if (focused) 3.dp else 0.dp, if (focused) Gold else Color.Transparent, RoundedCornerShape(13.dp)).onFocusChanged { focused = it.isFocused }.clickable { onSelect(s) }.focusable().padding(3.dp)) {
-                Poster(s.poster, Modifier.fillMaxWidth().height(142.dp))
+            Column(Modifier.width(124.dp).graphicsLayer { scaleX = if (focused) 1.035f else 1f; scaleY = if (focused) 1.035f else 1f }.border(if (focused) 2.dp else 0.dp, if (focused) Gold else Color.Transparent, RoundedCornerShape(13.dp)).onFocusChanged { focused = it.isFocused }.clickable { onSelect(s) }.focusable().padding(3.dp)) {
+                Poster(s.poster, Modifier.fillMaxWidth().height(148.dp))
                 Spacer(Modifier.height(7.dp))
                 Text(s.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
                 Text("${s.episodes.size} episodios", color = Muted, fontSize = 10.sp)
@@ -301,8 +303,16 @@ private fun SeriesRail(items: List<Series>, onSelect: (Series) -> Unit) {
 
 @Composable
 private fun Poster(url: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val request = remember(url) {
+        ImageRequest.Builder(context)
+            .data(url.takeIf { it.startsWith("http://") || it.startsWith("https://") })
+            .crossfade(160)
+            .allowHardware(true)
+            .build()
+    }
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(Panel2), contentAlignment = Alignment.Center) {
-        if (url.isNotBlank()) AsyncImage(url, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        if (url.isNotBlank()) AsyncImage(model = request, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Icon(Icons.Default.ConfirmationNumber, null, tint = Gold, modifier = Modifier.size(35.dp))
     }
 }
@@ -313,7 +323,7 @@ private fun MediaList(items: List<Entry>, title: String, empty: String, onPlay: 
         Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
         if (items.isEmpty()) EmptyState(empty)
         else LazyColumn(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            items(items) { e -> MediaRow(e.name, e.group, e.logo, onClick = { onPlay(e) }) }
+            items(items, key = { it.url }) { e -> MediaRow(e.name, e.group, e.logo, onClick = { onPlay(e) }) }
         }
     }
 }
@@ -406,7 +416,7 @@ private fun SeriesDetail(series: Series, onBack: () -> Unit, onPlay: (Entry) -> 
         }
         Text("EPISODIOS", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, modifier = Modifier.padding(18.dp))
         LazyColumn(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(series.episodes) { e -> MediaRow(e.name, e.group, e.logo.ifBlank { series.poster }, onClick = { onPlay(e) }) }
+            items(series.episodes, key = { it.url }) { e -> MediaRow(e.name, e.group, e.logo.ifBlank { series.poster }, onClick = { onPlay(e) }) }
         }
     }
 }
