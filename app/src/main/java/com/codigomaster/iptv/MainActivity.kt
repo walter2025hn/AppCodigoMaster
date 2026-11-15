@@ -96,7 +96,7 @@ private fun CodigoMasterApp(store: Store) {
         message = "Actualizando contenido…"
         scope.launch {
             try {
-                val latest = withContext(Dispatchers.IO) { parseM3u(download(store.effectiveUrl)) }
+                val latest = withContext(Dispatchers.IO) { downloadEntries(store.effectiveUrl) }
                 if (latest.isNotEmpty()) {
                     withContext(Dispatchers.IO) { store.saveCache(latest) }
                     entries = latest
