@@ -41,7 +41,8 @@ enum class Kind { LIVE, MOVIE, SERIES, OTHER }
 class Store(context: Context) {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("cm_playlist", Context.MODE_PRIVATE)
-    private val cacheFile = File(app.filesDir, "playlist_cache.json")
+    private val cacheFile = File(app.filesDir, "playlist_cache.jsonl.gz")
+    private val legacyCacheFile = File(app.filesDir, "playlist_cache.json")
 
     var playlistUrl: String
         get() = prefs.getString("custom_url", "").orEmpty()
@@ -103,10 +104,9 @@ class Store(context: Context) {
                 out.newLine()
             }
         }
-        val target = File(app.filesDir, "playlist_cache.jsonl.gz")
-        if (target.exists()) target.delete()
-        if (!temp.renameTo(target)) {
-            temp.copyTo(target, overwrite = true)
+        if (cacheFile.exists()) cacheFile.delete()
+        if (!temp.renameTo(cacheFile)) {
+            temp.copyTo(cacheFile, overwrite = true)
             temp.delete()
         }
         // readCache detecta automáticamente el formato comprimido nuevo.
@@ -115,6 +115,7 @@ class Store(context: Context) {
 
     fun readCache(): List<Entry> = try {
         if (!cacheFile.exists()) {
+            if (legacyCacheFile.exists()) return readLegacyArray(legacyCacheFile.readText(Charsets.UTF_8))
             val legacy = prefs.getString("playlist", "[]").orEmpty()
             return readLegacyArray(legacy)
         }
