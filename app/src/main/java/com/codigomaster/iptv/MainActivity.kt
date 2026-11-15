@@ -73,6 +73,9 @@ private fun CodigoMasterApp(store: Store) {
     var entries by remember { mutableStateOf(emptyList<Entry>()) }
     var catalog by remember { mutableStateOf(Catalog(emptyList(), emptyList(), emptyList())) }
     var loading by remember { mutableStateOf(false) }
+    var nextPage by remember { mutableIntStateOf(1) }
+    var totalPages by remember { mutableIntStateOf(0) }
+    var totalEntries by remember { mutableIntStateOf(0) }
     var message by remember { mutableStateOf("") }
     var statusError by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
@@ -93,21 +96,56 @@ private fun CodigoMasterApp(store: Store) {
         if (loading) return
         loading = true
         statusError = false
-        message = "Actualizando contenido…"
+        message = "Cargando los primeros 50 elementos…"
         scope.launch {
             try {
-                val latest = withContext(Dispatchers.IO) { downloadEntries(store.effectiveUrl) }
+                val result = withContext(Dispatchers.IO) {
+                    val source = PagedCatalogSource()
+                    val manifest = source.loadManifest()
+                    val firstPage = if (manifest.pageCount > 0) source.loadPage(1) else emptyList()
+                    manifest to firstPage
+                }
+                val latest = result.second
                 if (latest.isNotEmpty()) {
                     withContext(Dispatchers.IO) { store.saveCache(latest) }
                     entries = latest
-                    message = ""
+                    totalPages = result.first.pageCount
+                    totalEntries = result.first.total
+                    nextPage = 2
+                    message = "Mostrando ${latest.size} de ${result.first.total} elementos"
                 } else {
-                    message = "La lista llegó vacía; se conserva la versión anterior."
+                    message = "El catálogo no contiene elementos; se conserva la versión anterior."
                     statusError = true
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 message = if (entries.isNotEmpty()) "Sin conexión · mostrando la última lista guardada"
-                else "No se pudo cargar la lista. Revisa tu conexión."
+                else "No se pudo cargar la primera página: ${e.message ?: "revisa tu conexión"}"
+                statusError = true
+            } finally { loading = false }
+        }
+    }
+
+    fun loadMore() {
+        if (loading || nextPage > totalPages) return
+        loading = true
+        statusError = false
+        message = "Cargando los siguientes 50 elementos…"
+        scope.launch {
+            try {
+                val page = nextPage
+                val latest = withContext(Dispatchers.IO) { PagedCatalogSource().loadPage(page) }
+                if (latest.isNotEmpty()) {
+                    val merged = (entries + latest).distinctBy { it.url }
+                    withContext(Dispatchers.IO) { store.saveCache(merged) }
+                    entries = merged
+                    nextPage = page + 1
+                    message = "Mostrando ${merged.size} de ${totalEntries} elementos"
+                } else {
+                    nextPage = totalPages + 1
+                    message = "No hay más elementos disponibles."
+                }
+            } catch (e: Exception) {
+                message = "No se pudo cargar la página ${nextPage}: ${e.message ?: "inténtalo de nuevo"}"
                 statusError = true
             } finally { loading = false }
         }
@@ -234,6 +272,15 @@ private fun CodigoMasterApp(store: Store) {
                                     Section.SERIES -> SeriesScreen(fSeries, favorites, wide) { selectedSeries = it }
                                     Section.FAVS -> FavoritesScreen(catalog, favorites, wide, { play = it }, { selectedSeries = it })
                                 }
+                            }
+                        }
+                        if (totalPages > 0 && nextPage <= totalPages && entries.isNotEmpty()) {
+                            Button(
+                                onClick = ::loadMore,
+                                enabled = !loading,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                Text(if (loading) "Cargando…" else "Cargar 50 más · ${entries.size} de ${totalEntries}")
                             }
                         }
                     }
