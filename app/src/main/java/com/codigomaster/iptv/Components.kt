@@ -412,9 +412,7 @@ fun TopBar(
         } else {
             FocusIconButton(Icons.Filled.Search, "Buscar") { searchOpen = true }
         }
-        if (loading) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(Modifier.size(22.dp), color = Cm.Gold, strokeWidth = 2.dp)
-        } else FocusIconButton(Icons.Filled.Refresh, "Actualizar lista") { onRefresh() }
+        FocusIconButton(Icons.Filled.Refresh, "Actualizar lista", enabled = !loading) { if (!loading) onRefresh() }
         FocusIconButton(Icons.Filled.Settings, "Ajustes") { onSettings() }
     }
 }
