@@ -50,6 +50,22 @@ fun cleanTitle(raw: String): Pair<String, String?> {
     return t.replace(MANY_SPACES, " ").trim(' ', '-', '–', ':', '.') to year
 }
 
+private fun titleSimilarity(a: String, b: String): Double {
+    fun tokens(value: String): Set<String> = java.text.Normalizer.normalize(
+        value.lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD
+    ).replace(Regex("\\p{Mn}+"), "")
+        .replace(Regex("""\\b(19\\d{2}|20\\d{2})\\b"""), " ")
+        .split(Regex("[^a-z0-9]+")).filter { it.length > 1 }.toSet()
+    val left = tokens(a)
+    val right = tokens(b)
+    if (left.isEmpty() || right.isEmpty()) return 0.0
+    if (left == right) return 1.0
+    val overlap = left.intersect(right).size.toDouble()
+    val jaccard = overlap / left.union(right).size.toDouble()
+    val containment = overlap / minOf(left.size, right.size).toDouble()
+    return maxOf(jaccard, containment * 0.82)
+}
+
 /**
  * Calificación del público (votos de usuarios de TMDB, escala 0-10) para películas y series.
  * Necesita una clave gratuita de TMDB (Ajustes). Los resultados se guardan en el equipo, así
@@ -99,7 +115,7 @@ class RatingsRepo(private val store: Store) {
                 val a = o.optJSONArray(k) ?: return emptyList()
                 return (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }
             }
-            Meta(o.optString("o"), list("g"), o.optString("d"), list("c"), o.optString("k"), o.optString("t"), o.optString("n"), o.optString("b"))
+            Meta(o.optString("o"), list("g"), o.optString("d"), list("c"), o.optString("k"), o.optString("t"), o.optString("n"), o.optString("b"), o.optString("p"))
         } catch (_: Exception) { null }
     }
 
@@ -107,12 +123,31 @@ class RatingsRepo(private val store: Store) {
     private fun fetchMeta(title: String, year: String?, kind: RatingKind): String? {
         val tv = kind == RatingKind.SERIES
         val years: List<String?> = if (year != null) listOf(year, null) else listOf(null)
-        var id = 0
+        var selected: JSONObject? = null
         for (y in years) {
             val json = request(title, y, kind) ?: return null
             val results = json.optJSONArray("results") ?: continue
-            if (results.length() > 0) { id = results.getJSONObject(0).optInt("id"); break }
+            val candidates = (0 until minOf(results.length(), 8)).map { results.getJSONObject(it) }
+            val ranked = candidates.map { candidate ->
+                val candidateTitle = candidate.str(if (tv) "name" else "title").ifBlank {
+                    candidate.str(if (tv) "original_name" else "original_title")
+                }
+                val similarity = titleSimilarity(title, candidateTitle)
+                val candidateYear = candidate.str(if (tv) "first_air_date" else "release_date").take(4)
+                val yearBonus = if (y != null && candidateYear == y) 0.20 else 0.0
+                candidate to (similarity + yearBonus)
+            }.filter { (candidate, score) ->
+                val candidateTitle = candidate.str(if (tv) "name" else "title").ifBlank {
+                    candidate.str(if (tv) "original_name" else "original_title")
+                }
+                titleSimilarity(title, candidateTitle) >= 0.62 &&
+                    (y == null || candidate.str(if (tv) "first_air_date" else "release_date").take(4).isBlank() ||
+                        candidate.str(if (tv) "first_air_date" else "release_date").take(4) == y ||
+                        titleSimilarity(title, candidateTitle) >= 0.90)
+            }.sortedByDescending { it.second }
+            if (ranked.isNotEmpty()) { selected = ranked.first().first; break }
         }
+        val id = selected?.optInt("id") ?: 0
         if (id == 0) return "-"
         val d = getJson("https://api.themoviedb.org/3/${if (tv) "tv" else "movie"}/$id?language=es-MX&append_to_response=credits") ?: return null
         val genres = JSONArray()
@@ -140,6 +175,7 @@ class RatingsRepo(private val store: Store) {
             .put("t", d.str(if (tv) "first_air_date" else "release_date"))
             .put("n", d.str(if (tv) "original_name" else "original_title"))
             .put("b", if (back.isNotBlank()) "https://image.tmdb.org/t/p/w780$back" else "")
+            .put("p", d.str("poster_path").let { path -> if (path.isNotBlank()) "https://image.tmdb.org/t/p/w500$path" else "" })
             .toString()
     }
 
@@ -292,7 +328,8 @@ data class Meta(
     val country: String,
     val date: String,
     val original: String,
-    val backdrop: String
+    val backdrop: String,
+    val poster: String = ""
 )
 
 private fun JSONObject.str(k: String): String = if (isNull(k)) "" else optString(k)
