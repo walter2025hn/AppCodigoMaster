@@ -87,6 +87,8 @@ private fun CodigoMasterApp(store: Store) {
     var showSettings by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
     var showIntro by remember { mutableStateOf(true) }
+    var initialLoadReady by remember { mutableStateOf(false) }
+    var loadedEntriesCount by remember { mutableIntStateOf(0) }
     var favorites by remember { mutableStateOf(store.favorites()) }
     var recents by remember { mutableStateOf(store.recents()) }
 
@@ -99,68 +101,96 @@ private fun CodigoMasterApp(store: Store) {
         if (loading) return
         loading = true
         statusError = false
-        message = "Cargando los primeros 50 elementos…"
+        message = "Preparando el catálogo…"
         scope.launch {
+            val accumulated = mutableListOf<Entry>()
             try {
-                val result = withContext(Dispatchers.IO) {
-                    val source = PagedCatalogSource()
+                val source = PagedCatalogSource()
+                val first = withContext(Dispatchers.IO) {
                     val manifest = source.loadManifest()
-                    val firstPage = if (manifest.pageCount > 0) source.loadPage(1) else emptyList()
-                    manifest to firstPage
+                    val page = if (manifest.pageCount > 0) source.loadPage(1) else emptyList()
+                    manifest to page
                 }
-                val latest = result.second
-                if (latest.isNotEmpty()) {
-                    withContext(Dispatchers.IO) { store.saveCache(latest) }
-                    entries = latest
-                    totalPages = result.first.pageCount
-                    totalEntries = result.first.total
-                    nextPage = 2
-                    message = "Mostrando ${latest.size} de ${result.first.total} elementos"
-                } else {
+                val manifest = first.first
+                val firstPage = first.second
+                if (firstPage.isEmpty()) {
                     message = "El catálogo no contiene elementos; se conserva la versión anterior."
                     statusError = true
-                }
-            } catch (e: Exception) {
-                message = if (entries.isNotEmpty()) "Sin conexión · mostrando la última lista guardada"
-                else "No se pudo cargar la primera página: ${e.message ?: "revisa tu conexión"}"
-                statusError = true
-            } finally { loading = false }
-        }
-    }
-
-    fun loadMore() {
-        if (loading || nextPage > totalPages) return
-        loading = true
-        statusError = false
-        message = "Cargando los siguientes 50 elementos…"
-        scope.launch {
-            try {
-                val page = nextPage
-                val latest = withContext(Dispatchers.IO) { PagedCatalogSource().loadPage(page) }
-                if (latest.isNotEmpty()) {
-                    val merged = (entries + latest).distinctBy { it.url }
-                    withContext(Dispatchers.IO) { store.saveCache(merged) }
-                    entries = merged
-                    nextPage = page + 1
-                    message = "Mostrando ${merged.size} de ${totalEntries} elementos"
                 } else {
-                    nextPage = totalPages + 1
-                    message = "No hay más elementos disponibles."
+                    accumulated.addAll(firstPage)
+                    withContext(Dispatchers.IO) { store.saveCache(firstPage) }
+                    entries = firstPage
+                    totalPages = manifest.pageCount
+                    totalEntries = manifest.total
+                    loadedEntriesCount = firstPage.size
+                    message = "Catálogo listo · cargando el resto automáticamente"
+                    initialLoadReady = true
+
+                    // La primera página se prepara durante la animación. El resto se carga
+                    // automáticamente en segundo plano, manteniendo 50 registros por solicitud.
+                    var page = 2
+                    var keepLoading = true
+                    while (page <= manifest.pageCount && keepLoading) {
+                        val lastPageInBatch = minOf(page + 49, manifest.pageCount)
+                        while (page <= lastPageInBatch) {
+                            val batch = withContext(Dispatchers.IO) { source.loadPage(page) }
+                            if (batch.isEmpty()) {
+                                keepLoading = false
+                                break
+                            }
+                            accumulated.addAll(batch)
+                            loadedEntriesCount = accumulated.size
+                            page++
+                        }
+                        entries = accumulated.toList()
+                        message = "Actualizando catálogo · ${accumulated.size} de ${manifest.total}"
+                    }
+                    val complete = accumulated.distinctBy { it.url }
+                    withContext(Dispatchers.IO) { store.saveCache(complete) }
+                    entries = complete
+                    loadedEntriesCount = complete.size
+                    message = if (complete.size >= manifest.total) {
+                        "Catálogo completo · ${complete.size} elementos"
+                    } else {
+                        "Catálogo disponible · ${complete.size} de ${manifest.total} elementos"
+                    }
                 }
             } catch (e: Exception) {
-                message = "No se pudo cargar la página ${nextPage}: ${e.message ?: "inténtalo de nuevo"}"
+                if (accumulated.isNotEmpty()) {
+                    val partial = accumulated.distinctBy { it.url }
+                    entries = partial
+                    loadedEntriesCount = partial.size
+                    withContext(Dispatchers.IO) { store.saveCache(partial) }
+                }
+                message = if (entries.isNotEmpty()) {
+                    "Catálogo disponible · continúa la actualización en la próxima apertura"
+                } else {
+                    "No se pudo cargar el catálogo: ${e.message ?: "revisa tu conexión"}"
+                }
                 statusError = true
-            } finally { loading = false }
+            } finally {
+                loading = false
+                initialLoadReady = true
+            }
         }
     }
 
     LaunchedEffect(Unit) {
         val cached = withContext(Dispatchers.IO) { store.readCache() }
-        if (cached.isNotEmpty()) entries = cached
+        if (cached.isNotEmpty()) {
+            entries = cached
+            loadedEntriesCount = cached.size
+            initialLoadReady = true
+        }
         refresh()
     }
     LaunchedEffect(entries) { catalog = withContext(Dispatchers.Default) { buildCatalog(entries) } }
-    LaunchedEffect(Unit) { delay(1400); showIntro = false }
+    LaunchedEffect(initialLoadReady) {
+        if (initialLoadReady) {
+            delay(1400)
+            showIntro = false
+        }
+    }
 
     // Búsqueda: espera a que dejes de escribir y filtra fuera del hilo principal (antes cada tecla
     // recorría miles de títulos en el hilo de la interfaz y la app se quedaba pegada).
@@ -232,11 +262,6 @@ private fun CodigoMasterApp(store: Store) {
                     loading = loading, message = message, statusError = statusError,
                     blocker = blocker,
                     onRefresh = ::refresh,
-                    canLoadMore = totalPages > 0 && nextPage <= totalPages && entries.isNotEmpty(),
-                    loadingMore = loading,
-                    loadedCount = entries.size,
-                    totalEntries = totalEntries,
-                    onLoadMore = ::loadMore,
                     onSettings = { showSettings = true },
                     onPlay = { play = it }, onSeries = { selectedSeries = it; selectedMovie = null },
                     onMovie = { selectedMovie = it; selectedSeries = null },
@@ -300,16 +325,6 @@ private fun CodigoMasterApp(store: Store) {
                                 }
                             }
                         }
-                        if (totalPages > 0 && nextPage <= totalPages && entries.isNotEmpty()) {
-                            Button(
-                                onClick = ::loadMore,
-                                enabled = !loading,
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-                            ) {
-                                Text(if (loading) "Cargando…" else "Cargar 50 más · ${entries.size} de ${totalEntries}")
-                            }
-                        }
-                    }
                     if (!wide && detail == null) BottomBar(section) { section = it; search = "" }
                 }
             }
@@ -335,7 +350,11 @@ private fun CodigoMasterApp(store: Store) {
                 Spacer(Modifier.height(20.dp))
                 Text("CÓDIGO MASTER TV", color = Cm.Text, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
                 Spacer(Modifier.height(8.dp))
-                Text("Preparando tu entretenimiento…", color = Cm.Muted, fontSize = 13.sp)
+                Text(
+                    if (loadedEntriesCount > 0) "Cargando catálogo · $loadedEntriesCount elementos"
+                    else "Preparando tu entretenimiento…",
+                    color = Cm.Muted, fontSize = 13.sp
+                )
                 Spacer(Modifier.height(16.dp))
                 LinearProgressIndicator(Modifier.width(180.dp), color = Cm.Gold, trackColor = Cm.SurfaceTop)
             }
