@@ -191,6 +191,7 @@ fun buildCatalog(entries: List<Entry>): Catalog {
 }
 
 private val EPISODE_PATTERN = Regex("""\b(s\d{1,2}\s*e\d{1,3}|\d{1,2}x\d{1,3}|t\d{1,2}\s*e\d{1,3}|(?:temporada|season)\s*\d+\s*(?:cap[ií]tulo|episodio|episode|ep)\s*\d+|(?:cap[ií]tulo|episodio|episode|ep)\s*\d+)\b""", RegexOption.IGNORE_CASE)
+private val SEASON_ONLY_PATTERN = Regex("""\b(?:temporada|season)\s*\d+\b""", RegexOption.IGNORE_CASE)
 private val YEAR_PATTERN = Regex("""\b(19\d{2}|20\d{2})\b""")
 private val TOKEN_SPLIT = Regex("[^a-z0-9]+")
 private val BARE_ID_PATH = Regex("""/\d+/?$""")
@@ -255,7 +256,7 @@ fun classify(e: Entry): Kind {
     if (LIVE_ATTRS.any { attrs.contains(it) }) return Kind.LIVE
 
     // 3) Marcadores de episodio en el nombre.
-    if (EPISODE_PATTERN.containsMatchIn(name)) return Kind.SERIES
+    if (EPISODE_PATTERN.containsMatchIn(name) || SEASON_ONLY_PATTERN.containsMatchIn(name)) return Kind.SERIES
 
     // 4) Archivo de vídeo suelto (mp4/mkv/avi…) = contenido a la carta; no es un canal.
     val isVodFile = VOD_EXTENSIONS.any { path.endsWith(it) }
