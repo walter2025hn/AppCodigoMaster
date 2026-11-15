@@ -190,7 +190,7 @@ fun buildCatalog(entries: List<Entry>): Catalog {
     return Catalog(live, movies, buildSeries(seriesEntries))
 }
 
-private val EPISODE_PATTERN = Regex("""\b(s\d{1,2}\s*e\d{1,3}|\d{1,2}x\d{1,3}|t\d{1,2}\s*e\d{1,3}|temporada\s*\d+|capitulo\s*\d+|episodio\s*\d+)\b""")
+private val EPISODE_PATTERN = Regex("""\b(s\d{1,2}\s*e\d{1,3}|\d{1,2}x\d{1,3}|t\d{1,2}\s*e\d{1,3}|(?:temporada|season)\s*\d+\s*(?:cap[ií]tulo|episodio|episode|ep)\s*\d+|(?:cap[ií]tulo|episodio|episode|ep)\s*\d+)\b""", RegexOption.IGNORE_CASE)
 private val YEAR_PATTERN = Regex("""\b(19\d{2}|20\d{2})\b""")
 private val TOKEN_SPLIT = Regex("[^a-z0-9]+")
 private val BARE_ID_PATH = Regex("""/\d+/?$""")
@@ -286,6 +286,21 @@ fun classify(e: Entry): Kind {
     return Kind.OTHER
 }
 
+private val ANIME_WORDS = setOf("anime", "animacion japonesa", "animacion japonesa", "manga", "otaku", "donghua")
+private val KIDS_WORDS = setOf("kids", "kid", "infantil", "infantiles", "ninos", "ninas", "preescolar", "cartoons", "cartoon", "disney junior", "nick jr")
+
+fun isAnimeContent(name: String, group: String): Boolean {
+    val value = normalize("$name $group")
+    return ANIME_WORDS.any { normalize(it) in value } ||
+        listOf("naruto", "dragon ball", "one piece", "pokemon", " pokémon ", "demon slayer", "jujutsu kaisen", "my hero academia").any { value.contains(normalize(it)) }
+}
+
+fun isKidsContent(name: String, group: String): Boolean {
+    val value = normalize("$name $group")
+    return KIDS_WORDS.any { normalize(it) in value } ||
+        listOf("paw patrol", "peppa pig", "mickey mouse", "baby shark", "cocomelon", "dora la exploradora").any { value.contains(normalize(it)) }
+}
+
 private val DIACRITICS = Regex("\\p{Mn}+")
 
 private fun normalize(value: String): String =
@@ -293,7 +308,11 @@ private fun normalize(value: String): String =
         .replace(DIACRITICS, "")
 
 private val episodeRegex =
-    Regex("""(?i)^(.*?)[ ._\-]*(?:S\d{1,2}[ ._\-]*E\d{1,3}|\d{1,2}x\d{1,3}|T\d{1,2}[ ._\-]*E\d{1,3})(.*)$""")
+    Regex("""(?i)^(.*?)[ ._\-]*(?:S\d{1,2}[ ._\-]*E\d{1,3}|\d{1,2}x\d{1,3}|T\d{1,2}[ ._\-]*E\d{1,3}|(?:temporada|season)\s*\d+\s*(?:cap[ií]tulo|episodio|episode|ep)\s*\d+)(.*)$""")
+private val seasonOnlyRegex = Regex("""(?i)^(.*?)[ ._\-]*(?:temporada|season)\s*\d+.*$""")
+private val SEASON_EP_REGEX = Regex("""(?i)(?:temporada|season)\s*(\d+)\s*(?:cap[ií]tulo|episodio|episode|ep)\s*(\d+)""")
+private val SEASON_ONLY_NUMBER_REGEX = Regex("""(?i)(?:temporada|season)\s*(\d+)""")
+private val EP_ONLY_NUMBER_REGEX = Regex("""(?i)(?:cap[ií]tulo|episodio|episode|ep)\s*(\d+)""")
 
 private val TRAILING_SEPARATORS = Regex("""[._\-]+$""")
 private val SPACES = Regex("""\s+""")
@@ -306,7 +325,8 @@ private fun buildSeries(seriesEntries: List<Entry>): List<Series> {
     for (entry in seriesEntries) {
         val match = episodeRegex.find(entry.name)
         val title = if (match != null) match.groupValues[1].replace(TRAILING_SEPARATORS, "").trim().ifBlank { entry.name.trim() }
-        else entry.name.trim()
+        else seasonOnlyRegex.find(entry.name)?.groupValues?.get(1)?.replace(TRAILING_SEPARATORS, "")?.trim()?.ifBlank { entry.name.trim() }
+            ?: entry.name.trim()
         val key = title.lowercase(Locale.ROOT).replace(SPACES, " ")
         groups.getOrPut(key) { mutableListOf() }.add(entry)
     }
@@ -314,13 +334,20 @@ private fun buildSeries(seriesEntries: List<Entry>): List<Series> {
         val sorted = eps.sortedWith(compareBy<Entry>({ episodeNumber(it.name).first }, { episodeNumber(it.name).second }, { it.name }))
         val first = sorted.first()
         val title = episodeRegex.find(first.name)?.groupValues?.get(1)
-            ?.replace(TRAILING_SEPARATORS, "")?.trim()?.ifBlank { first.name } ?: first.name
+            ?.replace(TRAILING_SEPARATORS, "")?.trim()?.ifBlank { first.name }
+            ?: seasonOnlyRegex.find(first.name)?.groupValues?.get(1)?.replace(TRAILING_SEPARATORS, "")?.trim()?.ifBlank { first.name }
+            ?: first.name
         Series(title, sorted, sorted.firstOrNull { it.logo.isNotBlank() }?.logo.orEmpty(), first.group)
     }.sortedBy { it.title.lowercase(Locale.ROOT) }.distinctBy { it.key }
 }
 
 /** Devuelve (temporada, episodio); (0, 0) si no hay marcador. */
 fun episodeNumber(name: String): Pair<Int, Int> {
+    val seasonEpisode = SEASON_EP_REGEX.find(name)
+    if (seasonEpisode != null) return (seasonEpisode.groupValues[1].toIntOrNull() ?: 0) to (seasonEpisode.groupValues[2].toIntOrNull() ?: 0)
+    val seasonOnly = SEASON_ONLY_NUMBER_REGEX.find(name)?.groupValues?.get(1)?.toIntOrNull()
+    val episodeOnly = EP_ONLY_NUMBER_REGEX.find(name)?.groupValues?.get(1)?.toIntOrNull()
+    if (seasonOnly != null || episodeOnly != null) return (seasonOnly ?: 0) to (episodeOnly ?: 0)
     val sxe = SXE_REGEX.find(name)
     if (sxe != null) return (sxe.groupValues[1].toIntOrNull() ?: 0) to (sxe.groupValues[2].toIntOrNull() ?: 0)
     val x = X_REGEX.find(name)
