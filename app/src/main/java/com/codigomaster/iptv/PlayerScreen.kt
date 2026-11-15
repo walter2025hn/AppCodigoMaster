@@ -611,7 +611,7 @@ private fun PlayerMenu(
                 MenuHeader("Motor de reproducción")
                 EngineType.values().forEach { e ->
                     MenuRow(
-                        if (e == EngineType.EXO) "ExoPlayer · HLS, DASH, TS, MP4, MKV" else "VLC · RTMP, UDP, códecs raros",
+                        if (e == EngineType.EXO) "Reproductor 1 · ExoPlayer" else "Reproductor 2 · VLC",
                         e == engine
                     ) { onEngine(e) }
                 }
