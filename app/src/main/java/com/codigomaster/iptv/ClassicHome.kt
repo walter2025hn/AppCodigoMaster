@@ -118,11 +118,6 @@ fun ClassicHome(
     /** 0 = contenido listo, 1 = cargando, 2 = sin contenido. */
     blocker: Int,
     onRefresh: () -> Unit,
-    canLoadMore: Boolean,
-    loadingMore: Boolean,
-    loadedCount: Int,
-    totalEntries: Int,
-    onLoadMore: () -> Unit,
     onSettings: () -> Unit,
     onPlay: (PlayRequest) -> Unit,
     onSeries: (Series) -> Unit,
@@ -218,15 +213,6 @@ fun ClassicHome(
                             }
                             else -> ExploreTab(catalog, favorites, openOrPlay, onSeries)
                         }
-                    }
-                }
-                if (canLoadMore) {
-                    Button(
-                        onClick = onLoadMore,
-                        enabled = !loadingMore,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)
-                    ) {
-                        Text(if (loadingMore) "Cargando…" else "Cargar 50 más · $loadedCount de $totalEntries")
                     }
                 }
             }
