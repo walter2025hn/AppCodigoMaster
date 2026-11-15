@@ -54,7 +54,7 @@ private fun titleSimilarity(a: String, b: String): Double {
     fun tokens(value: String): Set<String> = java.text.Normalizer.normalize(
         value.lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD
     ).replace(Regex("\\p{Mn}+"), "")
-        .replace(Regex("""\\b(19\\d{2}|20\\d{2})\\b"""), " ")
+        .replace(Regex("""\b(19\d{2}|20\d{2})\b"""), " ")
         .split(Regex("[^a-z0-9]+")).filter { it.length > 1 }.toSet()
     val left = tokens(a)
     val right = tokens(b)
