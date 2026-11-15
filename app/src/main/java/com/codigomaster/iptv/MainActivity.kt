@@ -393,7 +393,6 @@ internal fun LoadingState() {
         )
         Spacer(Modifier.height(22.dp))
         Text("Preparando tu contenido…", color = Cm.Text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        Spacer(Modifier.height(12.dp))
-        LinearProgressIndicator(Modifier.width(160.dp), color = Cm.Gold, trackColor = Cm.SurfaceTop)
+        // Sin barra ni indicador giratorio: el catálogo se carga en segundo plano.
     }
 }
