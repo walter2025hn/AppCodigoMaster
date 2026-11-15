@@ -55,7 +55,7 @@ enum class NavTab(val label: String, val icon: ImageVector) {
     EXPLORE("EXPLORAR", Icons.Filled.Explore)
 }
 
-enum class ClassicOverlay { FAVS, RECENTS, FILTER }
+enum class ClassicOverlay { FAVS, RECENTS, FILTER, SEARCH }
 
 /** Escala de la interfaz según la altura de pantalla (móvil horizontal ≈ 0.8, TV ≈ 1.2). */
 val LocalUiScale = compositionLocalOf { 1f }
@@ -155,7 +155,9 @@ fun ClassicHome(
     }
 
     CompositionLocalProvider(LocalUiScale provides s) {
-        if (state.overlay == ClassicOverlay.FILTER) {
+        if (state.overlay == ClassicOverlay.SEARCH) {
+            SearchScreen(catalog, { openShow(it, onMovie, onSeries) }) { state.overlay = null }
+        } else if (state.overlay == ClassicOverlay.FILTER) {
             FilterScreen(state, catalog, openOrPlay, onSeries) { state.overlay = null }
         } else Row(
             Modifier.fillMaxSize().background(Pure)
@@ -167,7 +169,7 @@ fun ClassicHome(
             }
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 ClassicTopBar(
-                    search = search, onSearch = onSearch, searchOpen = searchOpen, onSearchOpen = { searchOpen = it },
+                    search = search, onSearch = onSearch, searchOpen = searchOpen, onSearchOpen = { if (it) state.overlay = ClassicOverlay.SEARCH else searchOpen = false },
                     overlay = state.overlay,
                     loading = loading, statusError = statusError, message = message,
                     onFilter = { state.overlay = ClassicOverlay.FILTER },

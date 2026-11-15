@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -40,6 +42,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -150,6 +153,25 @@ fun PlayerScreen(
     }
     LaunchedEffect(notice) { if (notice != null) { delay(3500); notice = null } }
 
+    // Velocidad de descarga de la app (esquina superior derecha en películas y series).
+    var speed by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(request.live) {
+        if (request.live) return@LaunchedEffect
+        val uid = android.os.Process.myUid()
+        var last = android.net.TrafficStats.getUidRxBytes(uid)
+        var lastT = System.nanoTime()
+        while (isActive) {
+            delay(1000)
+            val now = android.net.TrafficStats.getUidRxBytes(uid)
+            val t = System.nanoTime()
+            speed = if (last >= 0 && now >= last && t > lastT) {
+                val kb = ((now - last) * 1_000_000_000.0 / (t - lastT) / 1024.0).toLong()
+                if (kb >= 1024) String.format(java.util.Locale.US, "%.1fMB/S", kb / 1024.0) else "${kb}KB/S"
+            } else null
+            last = now; lastT = t
+        }
+    }
+
     // Pantalla completa, orientación horizontal en móviles y pantalla siempre encendida.
     DisposableEffect(Unit) {
         val window = activity?.window
@@ -189,7 +211,7 @@ fun PlayerScreen(
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(visible, failure) {
         delay(60)
-        try { if (visible && failure == null) playFocus.requestFocus() else rootFocus.requestFocus() } catch (_: Exception) { }
+        try { if (visible && failure == null && request.live) playFocus.requestFocus() else rootFocus.requestFocus() } catch (_: Exception) { }
     }
 
     val queueSize = request.queue.size
@@ -217,7 +239,14 @@ fun PlayerScreen(
                     Key.MediaRewind -> { if (!isLive) c.seekBy(-30_000); poke++; visible = true; true }
                     Key.MediaNext, Key.ChannelUp -> { stepRef.value(1); true }
                     Key.MediaPrevious, Key.ChannelDown -> { stepRef.value(-1); true }
-                    else -> if (visible) false else when (ev.key) {
+                    else -> if (!request.live && failure == null) when (ev.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { c.toggle(); visible = true; poke++; true }
+                        Key.DirectionLeft -> { c.seekBy(-10_000); visible = true; poke++; true }
+                        Key.DirectionRight -> { c.seekBy(10_000); visible = true; poke++; true }
+                        Key.DirectionUp -> { showMenu = true; poke++; true }
+                        Key.DirectionDown -> { if (visible) visible = false else { visible = true; poke++ }; true }
+                        else -> false
+                    } else if (visible) false else when (ev.key) {
                         Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { visible = true; poke++; true }
                         Key.DirectionLeft -> { if (!isLive) c.seekBy(-10_000); visible = true; poke++; true }
                         Key.DirectionRight -> { if (!isLive) c.seekBy(10_000); visible = true; poke++; true }
@@ -259,7 +288,7 @@ fun PlayerScreen(
 
         AnimatedVisibility(visible && failure == null && controller != null, enter = fadeIn(), exit = fadeOut()) {
             if (controller != null) {
-                PlayerControls(
+                if (request.live) PlayerControls(
                     controller = controller,
                     title = request.seriesTitle ?: entry.name,
                     subtitle = if (request.seriesTitle != null) entry.name else entry.group,
@@ -274,6 +303,18 @@ fun PlayerScreen(
                     onPrev = { step(-1) },
                     onNext = { step(1) },
                     onInteract = { poke++ }
+                ) else VodControls(
+                    controller = controller,
+                    title = request.seriesTitle ?: entry.name,
+                    episode = if (request.seriesTitle != null) entry.name else null,
+                    poster = entry.logo,
+                    speed = speed,
+                    hasNext = queueSize > 1 && index < queueSize - 1,
+                    onBack = onClose,
+                    onMenu = { showMenu = true; poke++ },
+                    onNext = { step(1) },
+                    onInteract = { poke++ },
+                    onHide = { visible = false }
                 )
             }
         }
@@ -404,6 +445,126 @@ private fun PlayerControls(
                 }
             }
         }
+    }
+}
+
+// ───────────────────── Controles de películas, series, kids y anime ─────────────────────
+
+@Composable
+private fun VodControls(
+    controller: Controller,
+    title: String,
+    episode: String?,
+    poster: String,
+    speed: String?,
+    hasNext: Boolean,
+    onBack: () -> Unit,
+    onMenu: () -> Unit,
+    onNext: () -> Unit,
+    onInteract: () -> Unit,
+    onHide: () -> Unit
+) {
+    val st = controller.state
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxWidth().fillMaxHeight(0.42f).align(Alignment.BottomCenter)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
+        )
+        if (speed != null) Text(
+            speed, color = Color.White, fontSize = 15.sp,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 14.dp, end = 22.dp)
+        )
+        Row(
+            Modifier.align(Alignment.BottomStart).fillMaxWidth().navigationBarsPadding()
+                .padding(start = 8.dp, end = 14.dp, bottom = 26.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Poster(
+                poster, Modifier.width(62.dp).aspectRatio(0.85f).clip(RoundedCornerShape(2.dp)),
+                Icons.Filled.Movie, ContentScale.Crop, 240, 280
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(formatTime(st.position), color = Color.White, fontSize = 14.sp)
+                    SeekBar(
+                        st.position, st.duration, { controller.seekTo(it) }, onInteract,
+                        Modifier.weight(1f).padding(horizontal = 10.dp)
+                    )
+                    Text(if (st.duration > 0) formatTime(st.duration) else "--:--", color = Color(0xFFB0B0B0), fontSize = 14.sp)
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(title, color = Color.White, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (episode != null) Text(episode, color = Color(0xFFB0B0B0), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        KeyHint("EXIT", null, "Vuelta", onBack)
+                        KeyHint("OK", null, "Reproducir/Pausar") { controller.toggle(); onInteract() }
+                        KeyHint(null, Icons.Filled.ArrowLeft, "Detrás") { controller.seekBy(-10_000); onInteract() }
+                        KeyHint(null, Icons.Filled.ArrowRight, "Adelante") { controller.seekBy(10_000); onInteract() }
+                        KeyHint(null, Icons.Filled.ArrowDropUp, "Info", onMenu)
+                        if (hasNext) KeyHint(null, Icons.Filled.SkipNext, "Siguiente", onNext)
+                    }
+                }
+            }
+        }
+        Icon(
+            Icons.Filled.KeyboardArrowDown, "Ocultar controles", tint = Color(0xFFCCCCCC),
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 2.dp).size(30.dp)
+                .tvClickable(CircleShape, 1.1f) { onHide() }
+        )
+    }
+}
+
+/** Barra de progreso fina con punto rojo; admite toque y arrastre. */
+@Composable
+private fun SeekBar(position: Long, duration: Long, onSeek: (Long) -> Unit, onInteract: () -> Unit, modifier: Modifier) {
+    var dragFrac by remember { mutableStateOf<Float?>(null) }
+    val frac = dragFrac ?: if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
+    BoxWithConstraints(
+        modifier.height(24.dp)
+            .pointerInput(duration) {
+                detectTapGestures(onTap = { o ->
+                    if (duration > 0) { onSeek((o.x / size.width * duration).toLong().coerceIn(0L, duration)); onInteract() }
+                })
+            }
+            .pointerInput(duration) {
+                detectHorizontalDragGestures(
+                    onDragStart = { o -> dragFrac = (o.x / size.width).coerceIn(0f, 1f) },
+                    onDragEnd = { dragFrac?.let { if (duration > 0) onSeek((it * duration).toLong()) }; dragFrac = null },
+                    onDragCancel = { dragFrac = null }
+                ) { change, _ -> dragFrac = (change.position.x / size.width).coerceIn(0f, 1f); onInteract() }
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0x66FFFFFF)))
+        Box(Modifier.fillMaxWidth(frac).height(4.dp).background(Color(0xFFB8B8B8)))
+        val dot = 14.dp
+        Box(
+            Modifier.offset(x = (maxWidth * frac - dot / 2).coerceAtLeast(0.dp)).size(dot + 8.dp)
+                .background(Color(0x55D72631), CircleShape),
+            contentAlignment = Alignment.Center
+        ) { Box(Modifier.size(dot).background(Color(0xFFD72631), CircleShape)) }
+    }
+}
+
+@Composable
+private fun KeyHint(badge: String?, icon: ImageVector?, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier.tvClickable(RoundedCornerShape(4.dp), 1.05f, onClick).padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.clip(RoundedCornerShape(2.dp)).background(Color(0xFFD9D9D9)).padding(horizontal = 5.dp, vertical = 1.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (badge != null) Text(badge, color = Color(0xFF222222), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            else if (icon != null) Icon(icon, null, tint = Color(0xFF222222), modifier = Modifier.size(11.dp))
+        }
+        Spacer(Modifier.width(5.dp))
+        Text(label, color = Color.White, fontSize = 10.sp, maxLines = 1)
     }
 }
 

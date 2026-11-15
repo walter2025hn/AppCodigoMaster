@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +58,18 @@ internal class ShowRow(val title: String, val items: List<ShowItem>)
 
 internal fun Entry.toShow() = ShowItem(url, name, logo, RatingKind.MOVIE, this, null, SUBS_HINT.containsMatchIn("$name $group"))
 internal fun Series.toShow() = ShowItem(key, title, poster, RatingKind.SERIES, null, this, SUBS_HINT.containsMatchIn("$title $group"))
+
+/** «T4» o «T10 - E89»: última temporada (y episodio si la serie tiene muchos). */
+internal fun seriesTag(s: Series): String? {
+    var season = 0
+    var ep = 0
+    for (e in s.episodes) {
+        val (a, b) = episodeNumber(e.name)
+        if (a > season || (a == season && b > ep)) { season = a; ep = b }
+    }
+    if (season <= 0) return null
+    return if (ep >= 40) "T$season - E$ep" else "T$season"
+}
 
 internal enum class ShowMode { FEATURED, MOVIES, SERIES, MIXED }
 
@@ -234,34 +248,52 @@ private fun HeroPairs(pages: List<List<ShowItem>>, onOpen: (ShowItem) -> Unit) {
     }
 }
 
-/** Miniatura apaisada: usa el fondo de TMDB si existe; si no, recorta el póster. Siempre lleva el título encima. */
+/**
+ * Miniatura apaisada. Con fondo de TMDB: la imagen apaisada y el título abajo.
+ * Sin fondo (solo hay póster vertical): póster completo a la izquierda sobre una versión tenue
+ * del mismo póster y el título a la derecha, para que no se vea recortado ni deformado.
+ */
 @Composable
 private fun WideTile(item: ShowItem, modifier: Modifier, titleSp: Float, onClick: () -> Unit) {
     val s = LocalUiScale.current
     val meta = rememberMeta(item.title, item.kind)
     val back = meta?.backdrop.orEmpty()
     Box(modifier.tvClickable(RoundedCornerShape(0.dp), 1.03f, onClick).background(TileBg)) {
-        Poster(
-            back.ifBlank { item.image }, Modifier.fillMaxSize(), Icons.Filled.Movie, ContentScale.Crop, 780, 440,
-            if (back.isBlank()) Alignment.TopCenter else Alignment.Center
-        )
-        Box(
-            Modifier.fillMaxWidth().fillMaxHeight(0.55f).align(Alignment.BottomCenter)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
-        )
-        Text(
-            item.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = (titleSp * s * 0.62f).sp,
-            maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (titleSp * s * 0.72f).sp,
-            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = (10 * s).dp, vertical = (8 * s).dp)
-        )
+        if (back.isNotBlank()) {
+            Poster(back, Modifier.fillMaxSize(), Icons.Filled.Movie, ContentScale.Crop, 780, 440)
+            Box(
+                Modifier.fillMaxWidth().fillMaxHeight(0.55f).align(Alignment.BottomCenter)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
+            )
+            Text(
+                item.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = (titleSp * s * 0.62f).sp,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (titleSp * s * 0.72f).sp,
+                modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = (10 * s).dp, vertical = (8 * s).dp)
+            )
+        } else {
+            Poster(item.image, Modifier.fillMaxSize().alpha(0.22f), Icons.Filled.Movie, ContentScale.Crop, 240, 360)
+            Row(Modifier.fillMaxSize().padding((8 * s).dp), verticalAlignment = Alignment.CenterVertically) {
+                Poster(
+                    item.image, Modifier.fillMaxHeight().aspectRatio(2f / 3f).clip(RoundedCornerShape(4.dp)),
+                    Icons.Filled.Movie, ContentScale.Crop, 240, 360
+                )
+                Spacer(Modifier.width((12 * s).dp))
+                Text(
+                    item.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = (titleSp * s * 0.62f).sp,
+                    maxLines = 4, overflow = TextOverflow.Ellipsis, lineHeight = (titleSp * s * 0.74f).sp,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
     }
 }
 
 // ───────────────────────────── Póster con nota y CC ─────────────────────────────
 
 @Composable
-internal fun PosterTile(item: ShowItem, modifier: Modifier, aspect: Float = 2f / 3f, onClick: () -> Unit) {
+internal fun PosterTile(item: ShowItem, modifier: Modifier, aspect: Float = 2f / 3f, centerTitle: Boolean = false, onClick: () -> Unit) {
     val s = LocalUiScale.current
+    val tag = remember(item.key) { item.series?.let { seriesTag(it) } }
     val score = rememberScore(item.key, item.title, item.kind)
     Column(modifier.tvClickable(RoundedCornerShape(6.dp), 1.04f, onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(aspect).clip(RoundedCornerShape(4.dp)).background(TileBg)) {
@@ -271,6 +303,10 @@ internal fun PosterTile(item: ShowItem, modifier: Modifier, aspect: Float = 2f /
                 fontSize = (12 * s).sp,
                 modifier = Modifier.align(Alignment.BottomStart).background(Color(0xAA000000)).padding(horizontal = 3.dp)
             )
+            if (tag != null) Text(
+                tag, color = Color.White, fontSize = (12 * s).sp, maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp)
+            )
             if (item.subs) Text(
                 "CC", color = Color.White, fontWeight = FontWeight.Bold, fontSize = (9 * s).sp,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp)
@@ -279,7 +315,8 @@ internal fun PosterTile(item: ShowItem, modifier: Modifier, aspect: Float = 2f /
         }
         Text(
             item.title, color = Color(0xFFE6E6E6), fontSize = (13 * s).sp, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)
+            overflow = TextOverflow.Ellipsis, textAlign = if (centerTitle) TextAlign.Center else TextAlign.Start,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
         )
     }
 }
