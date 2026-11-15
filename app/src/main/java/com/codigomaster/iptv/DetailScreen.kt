@@ -133,7 +133,7 @@ fun DetailScreen(
                                 Spacer(Modifier.height((8 * s).dp))
                                 val line = listOfNotNull(
                                     meta?.country?.takeIf { it.isNotBlank() } ?: group,
-                                    meta?.date?.takeIf { it.isNotBlank() },
+                                    meta?.date?.take(4)?.takeIf { it.length == 4 },
                                     meta?.original?.takeIf { it.isNotBlank() } ?: title
                                 ).joinToString(" | ")
                                 Text(line, color = LabelGrey, fontWeight = FontWeight.SemiBold, fontSize = (13 * s).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -175,8 +175,9 @@ fun DetailScreen(
                                     .background(Color.Black).tvClickable(RoundedCornerShape(0.dp), 1.0f) { play(false) }
                             ) {
                                 val back = meta?.backdrop.orEmpty()
+                                val poster = meta?.poster.orEmpty()
                                 Poster(
-                                    back.ifBlank { image }, Modifier.fillMaxSize(), Icons.Filled.Movie, ContentScale.Crop, 780, 440,
+                                    back.ifBlank { poster.ifBlank { image } }, Modifier.fillMaxSize(), Icons.Filled.Movie, ContentScale.Crop, 780, 440,
                                     if (back.isBlank()) Alignment.TopCenter else Alignment.Center
                                 )
                                 Box(
