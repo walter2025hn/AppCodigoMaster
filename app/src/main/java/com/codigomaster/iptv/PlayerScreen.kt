@@ -599,6 +599,7 @@ private fun PlayerMenu(
     val version = controller.state.tracksVersion
     val audio = remember(version) { controller.audioOptions() }
     val subs = remember(version) { controller.subtitleOptions() }
+    val video = remember(version) { controller.videoOptions() }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Cm.SurfaceHi,
@@ -616,14 +617,20 @@ private fun PlayerMenu(
                 }
                 MenuHeader("Pantalla")
                 AspectMode.values().forEach { a -> MenuRow(a.label, a == aspect) { onAspect(a) } }
-                if (audio.size > 1) {
-                    MenuHeader("Audio")
-                    audio.forEach { o -> MenuRow(o.label, o.selected) { controller.selectAudio(o.id) } }
-                }
-                if (subs.isNotEmpty()) {
-                    MenuHeader("Subtítulos")
-                    subs.forEach { o -> MenuRow(o.label, o.selected) { controller.selectSubtitle(o.id) } }
-                }
+                MenuHeader("Idioma / Audio")
+                if (audio.isNotEmpty()) audio.forEach { o ->
+                    MenuRow(o.label, o.selected) { controller.selectAudio(o.id) }
+                } else MenuHint("Esta transmisión no ofrece pistas de audio alternativas.")
+
+                MenuHeader("Subtítulos")
+                if (subs.isNotEmpty()) subs.forEach { o ->
+                    MenuRow(o.label, o.selected) { controller.selectSubtitle(o.id) }
+                } else MenuHint("No hay subtítulos disponibles para esta transmisión.")
+
+                MenuHeader("Calidad de video")
+                if (video.isNotEmpty()) video.forEach { o ->
+                    MenuRow(o.label, o.selected) { controller.selectVideo(o.id) }
+                } else MenuHint("La fuente no ofrece varias calidades seleccionables.")
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar", color = Cm.Gold, fontWeight = FontWeight.Bold) } }
@@ -634,6 +641,11 @@ private fun PlayerMenu(
 private fun MenuHeader(text: String) {
     Text(text.uppercase(), color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp,
         modifier = Modifier.padding(top = 14.dp, bottom = 4.dp))
+}
+
+@Composable
+private fun MenuHint(text: String) {
+    Text(text, color = Cm.Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
 }
 
 @Composable
