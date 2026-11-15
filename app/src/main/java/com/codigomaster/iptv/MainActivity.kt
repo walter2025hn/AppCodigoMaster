@@ -131,9 +131,17 @@ private fun CodigoMasterApp(store: Store) {
                     var page = 2
                     var keepLoading = true
                     while (page <= manifest.pageCount && keepLoading) {
-                        val lastPageInBatch = minOf(page + 49, manifest.pageCount)
-                        while (page <= lastPageInBatch) {
-                            val batch = withContext(Dispatchers.IO) { source.loadPage(page) }
+                        // El reproductor tiene prioridad absoluta: no se solicitan páginas
+                        // nuevas mientras haya una película/canal reproduciéndose.
+                        while (play != null) delay(500)
+
+                        // Descargar un bloque pequeño y luego ceder tiempo a la interfaz.
+                        // Así evitamos ráfagas largas de red y trabajo de catálogo.
+                        val lastPageInBatch = minOf(page + 4, manifest.pageCount)
+                        while (page <= lastPageInBatch && keepLoading) {
+                            while (play != null) delay(500)
+                            val currentPage = page
+                            val batch = withContext(Dispatchers.IO) { source.loadPage(currentPage) }
                             if (batch.isEmpty()) {
                                 keepLoading = false
                                 break
@@ -144,6 +152,8 @@ private fun CodigoMasterApp(store: Store) {
                         loadedEntriesCount = accumulated.size
                         entries = accumulated.toList()
                         message = "Actualizando catálogo · ${accumulated.size} de ${manifest.total}"
+                        // Da oportunidad a Compose y al reproductor de procesar sus frames.
+                        delay(250)
                     }
                     val complete = accumulated.distinctBy { it.url }
                     withContext(Dispatchers.IO) { store.saveCache(complete) }
