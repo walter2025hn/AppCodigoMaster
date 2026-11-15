@@ -57,6 +57,8 @@ enum class Section(val label: String, val icon: androidx.compose.ui.graphics.vec
     LIVE("TV en vivo", Icons.Filled.LiveTv),
     MOVIES("Películas", Icons.Filled.Movie),
     SERIES("Series", Icons.Filled.Tv),
+    ANIME("Anime", Icons.Filled.Animation),
+    KIDS("Kids", Icons.Filled.ChildCare),
     FAVS("Mi lista", Icons.Filled.Favorite)
 }
 
