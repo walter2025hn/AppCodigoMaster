@@ -5,6 +5,12 @@ import androidx.compose.runtime.mutableStateMapOf
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -82,26 +88,78 @@ class Store(context: Context) {
     fun savePosition(url: String, ms: Long) { prefs.edit().putLong("pos_" + url.hashCode(), ms).apply() }
     fun clearPosition(url: String) { prefs.edit().remove("pos_" + url.hashCode()).apply() }
 
+    /**
+     * Caché comprimida y en JSON Lines: no construye un JSONArray/JSON gigante en RAM.
+     * El archivo antiguo (JSONArray sin comprimir) se sigue leyendo para migrar sin perder datos.
+     */
     fun saveCache(entries: List<Entry>) {
-        val arr = JSONArray()
-        entries.forEach { e ->
-            arr.put(JSONObject().apply {
-                put("name", e.name); put("url", e.url); put("group", e.group)
-                put("logo", e.logo); put("tvgId", e.tvgId); put("attributes", e.attributes); put("section", e.section)
-            })
+        val temp = File(app.filesDir, "playlist_cache.jsonl.gz.tmp")
+        GZIPOutputStream(temp.outputStream().buffered()).bufferedWriter(Charsets.UTF_8).use { out ->
+            entries.forEach { e ->
+                out.write(JSONObject().apply {
+                    put("name", e.name); put("url", e.url); put("group", e.group)
+                    put("logo", e.logo); put("tvgId", e.tvgId); put("attributes", e.attributes); put("section", e.section)
+                }.toString())
+                out.newLine()
+            }
         }
-        cacheFile.writeText(arr.toString())
-        prefs.edit().remove("playlist").apply() // formato antiguo
+        val target = File(app.filesDir, "playlist_cache.jsonl.gz")
+        if (target.exists()) target.delete()
+        if (!temp.renameTo(target)) {
+            temp.copyTo(target, overwrite = true)
+            temp.delete()
+        }
+        // readCache detecta automáticamente el formato comprimido nuevo.
+        prefs.edit().remove("playlist").apply()
     }
 
     fun readCache(): List<Entry> = try {
-        val raw = if (cacheFile.exists()) cacheFile.readText() else prefs.getString("playlist", "[]").orEmpty()
-        val arr = JSONArray(raw)
-        (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            Entry(o.optString("name"), o.optString("url"), o.optString("group"), o.optString("logo"), o.optString("tvgId"), o.optString("attributes"), o.optString("section"))
+        if (!cacheFile.exists()) {
+            val legacy = prefs.getString("playlist", "[]").orEmpty()
+            return readLegacyArray(legacy)
+        }
+        cacheFile.inputStream().buffered().use { input ->
+            input.mark(2)
+            val first = input.read()
+            val second = input.read()
+            input.reset()
+            val reader = if (first == 0x1f && second == 0x8b) {
+                GZIPInputStream(input).bufferedReader(Charsets.UTF_8)
+            } else input.bufferedReader(Charsets.UTF_8)
+            reader.use { source ->
+                source.mark(1)
+                var firstLine = source.readLine()
+                while (firstLine != null && firstLine.isBlank()) firstLine = source.readLine()
+                if (firstLine == null) emptyList()
+                else if (firstLine.trimStart().startsWith("[")) {
+                    readLegacyArray(firstLine + "\\n" + source.readText())
+                } else {
+                    buildList {
+                        var line: String? = firstLine
+                        while (line != null) {
+                            if (line.isNotBlank()) {
+                                val o = JSONObject(line)
+                                add(Entry(o.optString("name"), o.optString("url"), o.optString("group"),
+                                    o.optString("logo"), o.optString("tvgId"), o.optString("attributes"), o.optString("section")))
+                            }
+                            line = source.readLine()
+                        }
+                    }
+                }
+            }
         }
     } catch (_: Exception) { emptyList() }
+
+    private fun readLegacyArray(raw: String): List<Entry> {
+        val arr = JSONArray(raw)
+        return buildList(arr.length()) {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                add(Entry(o.optString("name"), o.optString("url"), o.optString("group"),
+                    o.optString("logo"), o.optString("tvgId"), o.optString("attributes"), o.optString("section")))
+            }
+        }
+    }
 }
 
 fun groupCounts(items: List<Entry>, limit: Int = 60): List<Pair<String, Int>> =
@@ -271,15 +329,18 @@ fun episodeNumber(name: String): Pair<Int, Int> {
 
 // ───────────────────────── Descarga y lectura M3U ─────────────────────────
 
-fun download(url: String): String {
+/** Descarga y analiza línea por línea: evita mantener la M3U completa como String en memoria. */
+fun downloadEntries(url: String): List<Entry> {
     val conn = (URL(url).openConnection() as HttpURLConnection).apply {
         connectTimeout = 15000
-        readTimeout = 30000
-        setRequestProperty("User-Agent", "CodigoMasterIPTV/3.0")
+        readTimeout = 60000
+        setRequestProperty("User-Agent", "CodigoMasterIPTV/4.4")
         setRequestProperty("Cache-Control", "no-cache")
+        instanceFollowRedirects = true
     }
-    return try { conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() } }
-    finally { conn.disconnect() }
+    return try {
+        conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader -> parseM3u(reader) }
+    } finally { conn.disconnect() }
 }
 
 private val groupRegex = Regex("""(?i)group-title="([^"]*)"""")
@@ -299,8 +360,12 @@ private fun sectionOf(marker: String): String {
     }
 }
 
-fun parseM3u(text: String): List<Entry> {
-    val result = mutableListOf<Entry>()
+fun parseM3u(text: String): List<Entry> = parseM3uLines(text.removePrefix("\\uFEFF").lineSequence())
+
+fun parseM3u(reader: BufferedReader): List<Entry> = parseM3uLines(reader.lineSequence())
+
+private fun parseM3uLines(lines: Sequence<String>): List<Entry> {
+    val result = ArrayList<Entry>()
     var name = ""
     var group = ""
     var logo = ""
