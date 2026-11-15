@@ -1,6 +1,7 @@
 package com.codigomaster.iptv
 
 import android.os.Bundle
+import android.app.Activity
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -84,6 +85,8 @@ private fun CodigoMasterApp(store: Store) {
     var selectedMovie by remember { mutableStateOf<Entry?>(null) }
     var play by remember { mutableStateOf<PlayRequest?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var showExitDialog by remember { mutableStateOf(false) }
+    var showIntro by remember { mutableStateOf(true) }
     var favorites by remember { mutableStateOf(store.favorites()) }
     var recents by remember { mutableStateOf(store.recents()) }
 
@@ -157,6 +160,7 @@ private fun CodigoMasterApp(store: Store) {
         refresh()
     }
     LaunchedEffect(entries) { catalog = withContext(Dispatchers.Default) { buildCatalog(entries) } }
+    LaunchedEffect(Unit) { delay(1400); showIntro = false }
 
     // Búsqueda: espera a que dejes de escribir y filtra fuera del hilo principal (antes cada tecla
     // recorría miles de títulos en el hilo de la interfaz y la app se quedaba pegada).
@@ -184,8 +188,12 @@ private fun CodigoMasterApp(store: Store) {
     }
     val catalogEmpty = catalog.live.isEmpty() && catalog.movies.isEmpty() && catalog.series.isEmpty()
 
-    BackHandler(enabled = !classic && play == null && selectedSeries == null && (section != Section.HOME || search.isNotEmpty())) {
-        if (search.isNotEmpty()) search = "" else section = Section.HOME
+    BackHandler(enabled = play == null && selectedSeries == null && selectedMovie == null && !showSettings) {
+        when {
+            search.isNotEmpty() -> search = ""
+            section != Section.HOME -> section = Section.HOME
+            else -> showExitDialog = true
+        }
     }
 
     Surface(Modifier.fillMaxSize(), color = Cm.Bg) {
@@ -270,6 +278,18 @@ private fun CodigoMasterApp(store: Store) {
                                     Section.LIVE -> LiveScreen(fLive, favorites, wide, { play = it }, ::toggleFavorite)
                                     Section.MOVIES -> MoviesScreen(fMovies, favorites, wide, { play = it })
                                     Section.SERIES -> SeriesScreen(fSeries, favorites, wide) { selectedSeries = it }
+                                    Section.ANIME -> MixedContentScreen(
+                                        "Anime",
+                                        fMovies.filter { isAnimeContent(it.name, it.group) },
+                                        fSeries.filter { isAnimeContent(it.title, it.group) },
+                                        wide, { play = it }, { selectedSeries = it }
+                                    )
+                                    Section.KIDS -> MixedContentScreen(
+                                        "Kids",
+                                        fMovies.filter { isKidsContent(it.name, it.group) },
+                                        fSeries.filter { isKidsContent(it.title, it.group) },
+                                        wide, { play = it }, { selectedSeries = it }
+                                    )
                                     Section.FAVS -> FavoritesScreen(catalog, favorites, wide, { play = it }, { selectedSeries = it })
                                 }
                             }
@@ -288,6 +308,52 @@ private fun CodigoMasterApp(store: Store) {
                 }
             }
         }
+    }
+
+    if (showIntro) {
+        val pulse by rememberInfiniteTransition(label = "intro").animateFloat(
+            initialValue = 0.72f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "introAlpha"
+        )
+        Box(
+            Modifier.fillMaxSize().background(Cm.Bg),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Image(
+                    painterResource(R.drawable.brand_logo), null,
+                    Modifier.size(132.dp).alpha(pulse).clip(RoundedCornerShape(28.dp))
+                        .border(2.dp, Cm.Gold, RoundedCornerShape(28.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(Modifier.height(20.dp))
+                Text("CÓDIGO MASTER TV", color = Cm.Text, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("Preparando tu entretenimiento…", color = Cm.Muted, fontSize = 13.sp)
+                Spacer(Modifier.height(16.dp))
+                LinearProgressIndicator(Modifier.width(180.dp), color = Cm.Gold, trackColor = Cm.SurfaceTop)
+            }
+        }
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            containerColor = Cm.SurfaceHi,
+            titleContentColor = Cm.Text,
+            textContentColor = Cm.Text,
+            title = { Text("Salir de MasterCode TV", fontWeight = FontWeight.Bold) },
+            text = { Text("¿Estás seguro de que deseas salir de la aplicación?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitDialog = false
+                    (context as? Activity)?.finish()
+                }) { Text("Salir", color = Cm.Gold, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) { Text("Cancelar", color = Cm.Muted) }
+            }
+        )
     }
 
     if (showSettings) {
