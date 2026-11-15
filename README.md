@@ -116,3 +116,12 @@ Instala «Downloader» desde la tienda de Amazon, activa Ajustes › Mi Fire TV 
 - Idioma y Resolución abren el reproductor con el panel de audio / subtítulos / pantalla ya desplegado.
 - Con la clave de TMDB (Ajustes) se rellenan sinopsis, director, reparto, país, fecha y fondos apaisados; sin clave se muestra la categoría y el póster recortado. Cada ficha se consulta una vez y se guarda en el equipo.
 - «Continuar viendo» y el historial siguen reanudando directamente la reproducción.
+
+## Versión 4.2.1 — Miniaturas y reproductor
+- Miniaturas apaisadas sin imagen de fondo: se muestra el póster completo con el título al lado (antes se recortaba).
+- Reproductor de películas, series, kids y anime con el nuevo diseño: póster, tiempo, barra con punto rojo, título, velocidad de descarga y atajos EXIT · OK · ◀ ▶ · ▲ Info. En mando: OK pausa, ◀ ▶ saltan 10 s, ▲ abre el panel de audio / subtítulos / pantalla, ▼ oculta los controles. Los canales en vivo conservan su control anterior.
+
+## Versión 4.3.0 — Nuevo buscador
+- El icono de lupa abre un buscador a pantalla completa: teclado en pantalla a la izquierda (A-Z con tildes, 123, borrar todo, borrar, Busca y espacio) y a la derecha «Búsqueda popular» (con Actualizar) o los resultados, con el total en naranja.
+- Búsqueda sin distinguir mayúsculas ni tildes, por título y categoría, en películas y series.
+- Los pósters de series muestran la temporada (T4) o temporada y episodio (T10 - E89).
