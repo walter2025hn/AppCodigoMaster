@@ -138,13 +138,15 @@ class Store(context: Context) {
                 } else {
                     buildList {
                         var line: String? = firstLine
-                        while (line != null) {
+                        // En el arranque solo se leen 50 elementos de la caché; las páginas siguientes
+                        // se solicitan bajo demanda para no analizar cientos de miles de entradas.
+                        while (line != null && size < 50) {
                             if (line.isNotBlank()) {
                                 val o = JSONObject(line)
                                 add(Entry(o.optString("name"), o.optString("url"), o.optString("group"),
                                     o.optString("logo"), o.optString("tvgId"), o.optString("attributes"), o.optString("section")))
                             }
-                            line = source.readLine()
+                            if (size < 50) line = source.readLine()
                         }
                     }
                 }
@@ -155,8 +157,8 @@ class Store(context: Context) {
 
     private fun readLegacyArray(raw: String): List<Entry> {
         val arr = JSONArray(raw)
-        return buildList(arr.length()) {
-            for (i in 0 until arr.length()) {
+        return buildList(minOf(arr.length(), 50)) {
+            for (i in 0 until minOf(arr.length(), 50)) {
                 val o = arr.getJSONObject(i)
                 add(Entry(o.optString("name"), o.optString("url"), o.optString("group"),
                     o.optString("logo"), o.optString("tvgId"), o.optString("attributes"), o.optString("section")))
