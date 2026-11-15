@@ -47,7 +47,9 @@ import java.util.Locale
  */
 enum class EngineType(val label: String) { EXO("ExoPlayer"), VLC("VLC") }
 
-enum class AspectMode(val label: String) { FIT("Ajustar"), FILL("Estirar"), ZOOM("Zoom (recortar)") }
+enum class AspectMode(val label: String) {
+    FIT("Normal"), FILL("Pantalla completa"), RATIO_16_9("16:9"), RATIO_4_3("4:3")
+}
 
 class PlayerState {
     var playing by mutableStateOf(true)
@@ -71,8 +73,10 @@ abstract class Controller {
     abstract fun poll()
     abstract fun audioOptions(): List<TrackOpt>
     abstract fun subtitleOptions(): List<TrackOpt>
+    abstract fun videoOptions(): List<TrackOpt>
     abstract fun selectAudio(id: String)
     abstract fun selectSubtitle(id: String)
+    abstract fun selectVideo(id: String)
     abstract fun release()
 
     @Composable
@@ -285,6 +289,13 @@ class ExoController(
 
     override fun audioOptions(): List<TrackOpt> = options(C.TRACK_TYPE_AUDIO)
 
+    override fun videoOptions(): List<TrackOpt> = options(C.TRACK_TYPE_VIDEO).mapIndexed { index, opt ->
+        val (gi, ti) = opt.id.split(":").map { it.toInt() }
+        val format = exo.currentTracks.groups.getOrNull(gi)?.getTrackFormat(ti)
+        val resolution = format?.height?.takeIf { it > 0 }?.let { "${it}p" }
+        opt.copy(label = resolution ?: opt.label.ifBlank { "Calidad ${index + 1}" })
+    }
+
     override fun subtitleOptions(): List<TrackOpt> {
         val subs = options(C.TRACK_TYPE_TEXT)
         if (subs.isEmpty()) return emptyList()
@@ -307,6 +318,7 @@ class ExoController(
 
     override fun selectAudio(id: String) = select(C.TRACK_TYPE_AUDIO, id)
     override fun selectSubtitle(id: String) = select(C.TRACK_TYPE_TEXT, id)
+    override fun selectVideo(id: String) = select(C.TRACK_TYPE_VIDEO, id)
 
     override fun release() {
         if (released) return
@@ -317,24 +329,32 @@ class ExoController(
 
     @Composable
     override fun Content(modifier: Modifier, aspect: AspectMode) {
-        AndroidView(
-            modifier = modifier,
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = false
-                    player = exo
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                    setShutterBackgroundColor(android.graphics.Color.BLACK)
-                }
-            },
-            update = { view ->
-                view.resizeMode = when (aspect) {
-                    AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                    AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                }
+        BoxWithConstraints(modifier, contentAlignment = androidx.compose.ui.Alignment.Center) {
+            val ratio = when (aspect) {
+                AspectMode.RATIO_16_9 -> 16f / 9f
+                AspectMode.RATIO_4_3 -> 4f / 3f
+                else -> null
             }
-        )
+            val playerModifier = if (ratio == null) Modifier.fillMaxSize()
+                else Modifier.fillMaxWidth().aspectRatio(ratio).heightIn(max = maxHeight)
+            AndroidView(
+                modifier = playerModifier,
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = false
+                        player = exo
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    }
+                },
+                update = { view ->
+                    view.resizeMode = when (aspect) {
+                        AspectMode.FIT, AspectMode.RATIO_16_9, AspectMode.RATIO_4_3 -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -401,13 +421,12 @@ class VlcController(
         aspect = mode
         if (released || !attached) return
         try {
-            mp.setVideoScale(
-                when (mode) {
-                    AspectMode.FIT -> MediaPlayer.ScaleType.SURFACE_BEST_FIT
-                    AspectMode.FILL -> MediaPlayer.ScaleType.SURFACE_FILL
-                    AspectMode.ZOOM -> MediaPlayer.ScaleType.SURFACE_FIT_SCREEN
-                }
-            )
+            when (mode) {
+                AspectMode.RATIO_16_9 -> { mp.setAspectRatio("16:9"); mp.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT) }
+                AspectMode.RATIO_4_3 -> { mp.setAspectRatio("4:3"); mp.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT) }
+                AspectMode.FIT -> { mp.setAspectRatio(null); mp.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT) }
+                AspectMode.FILL -> { mp.setAspectRatio(null); mp.setVideoScale(MediaPlayer.ScaleType.SURFACE_FILL) }
+            }
         } catch (_: Throwable) { }
     }
 
@@ -440,6 +459,10 @@ class VlcController(
         val current = mp.getAudioTrack()
         return tracks.filter { it.id >= 0 }.map { TrackOpt(it.id.toString(), it.name ?: "Audio ${it.id}", it.id == current) }
     }
+
+    override fun videoOptions(): List<TrackOpt> = emptyList()
+
+    override fun selectVideo(id: String) = Unit
 
     override fun subtitleOptions(): List<TrackOpt> {
         if (released) return emptyList()
