@@ -277,10 +277,8 @@ private fun ClassicTopBar(
         Modifier.fillMaxWidth().padding(top = (6 * s).dp, end = (14 * s).dp, start = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (message.isNotBlank()) Text(
-            message, color = if (statusError) Cm.Danger else Cm.Muted, fontSize = 11.sp, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 12.dp)
-        ) else Spacer(Modifier.weight(1f))
+        // La actualización del catálogo ocurre en segundo plano y no ocupa la barra superior.
+        Spacer(Modifier.weight(1f))
 
         if (searchOpen || search.isNotEmpty()) {
             SearchField(search, onSearch, Modifier.width((280 * s).dp)) { onSearch(""); onSearchOpen(false) }
@@ -294,9 +292,7 @@ private fun ClassicTopBar(
         Spacer(Modifier.width((8 * s).dp))
         Box(Modifier.width(1.dp).height((16 * s).dp).background(Color(0xFF555555)))
         Spacer(Modifier.width((10 * s).dp))
-        if (loading) Box(Modifier.size((30 * s).dp), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(Modifier.size((18 * s).dp), color = Cm.Gold, strokeWidth = 2.dp)
-        } else Box(Modifier.size((30 * s).dp).tvClickable(CircleShape, 1.12f) { onWifi() }, contentAlignment = Alignment.Center) {
+        Box(Modifier.size((30 * s).dp).then(if (!loading) Modifier.tvClickable(CircleShape, 1.12f) { onWifi() } else Modifier), contentAlignment = Alignment.Center) {
             Icon(
                 if (statusError) Icons.Filled.WifiOff else Icons.Filled.Wifi, "Actualizar lista",
                 tint = if (statusError) Cm.Danger else Color.White, modifier = Modifier.size((24 * s).dp)
