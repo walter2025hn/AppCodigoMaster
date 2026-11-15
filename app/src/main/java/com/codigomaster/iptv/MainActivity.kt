@@ -137,7 +137,7 @@ private fun CodigoMasterApp(store: Store) {
 
                         // Descargar un bloque pequeño y luego ceder tiempo a la interfaz.
                         // Así evitamos ráfagas largas de red y trabajo de catálogo.
-                        val lastPageInBatch = minOf(page + 4, manifest.pageCount)
+                        val lastPageInBatch = minOf(page + 19, manifest.pageCount)
                         while (page <= lastPageInBatch && keepLoading) {
                             while (play != null) delay(500)
                             val currentPage = page
@@ -152,9 +152,7 @@ private fun CodigoMasterApp(store: Store) {
                         loadedEntriesCount = accumulated.size
                         entries = accumulated.toList()
                         message = "Actualizando catálogo · ${accumulated.size} de ${manifest.total}"
-                        // Da oportunidad a Compose y al reproductor de procesar sus frames.
-                        delay(250)
-                    }
+}
                     val complete = accumulated.distinctBy { it.url }
                     withContext(Dispatchers.IO) { store.saveCache(complete) }
                     entries = complete
@@ -294,19 +292,6 @@ private fun CodigoMasterApp(store: Store) {
                         }
                     } else {
                         TopBar(section, search, { search = it }, loading, wide, ::refresh, { showSettings = true })
-                        if (message.isNotBlank()) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    if (statusError) Icons.Filled.WifiOff else Icons.Filled.Sync, null,
-                                    tint = if (statusError) Cm.Danger else Cm.Muted, modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(message, color = if (statusError) Cm.Danger else Cm.Muted, fontSize = 11.sp, maxLines = 1)
-                            }
-                        }
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             when {
                                 entries.isEmpty() && loading -> LoadingState()
@@ -361,12 +346,9 @@ private fun CodigoMasterApp(store: Store) {
                 Text("CÓDIGO MASTER TV", color = Cm.Text, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    if (loadedEntriesCount > 0) "Cargando catálogo · $loadedEntriesCount elementos"
-                    else "Preparando tu entretenimiento…",
+                    "Tu entretenimiento está listo",
                     color = Cm.Muted, fontSize = 13.sp
                 )
-                Spacer(Modifier.height(16.dp))
-                LinearProgressIndicator(Modifier.width(180.dp), color = Cm.Gold, trackColor = Cm.SurfaceTop)
             }
         }
     }
