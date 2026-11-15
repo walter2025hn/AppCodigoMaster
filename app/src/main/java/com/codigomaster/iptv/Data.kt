@@ -133,7 +133,7 @@ class Store(context: Context) {
                 while (firstLine != null && firstLine.isBlank()) firstLine = source.readLine()
                 if (firstLine == null) emptyList()
                 else if (firstLine.trimStart().startsWith("[")) {
-                    readLegacyArray(firstLine + "\\n" + source.readText())
+                    readLegacyArray(firstLine + "\n" + source.readText())
                 } else {
                     buildList {
                         var line: String? = firstLine
@@ -361,7 +361,7 @@ private fun sectionOf(marker: String): String {
     }
 }
 
-fun parseM3u(text: String): List<Entry> = parseM3uLines(text.removePrefix("\\uFEFF").lineSequence())
+fun parseM3u(text: String): List<Entry> = parseM3uLines(text.removePrefix("\uFEFF").lineSequence())
 
 fun parseM3u(reader: BufferedReader): List<Entry> = parseM3uLines(reader.lineSequence())
 
@@ -373,7 +373,7 @@ private fun parseM3uLines(lines: Sequence<String>): List<Entry> {
     var tvgId = ""
     var attributes = ""
     var section = ""
-    for (raw in text.removePrefix("\uFEFF").lineSequence()) {
+    for (raw in lines) {
         val line = raw.trim()
         if (line.startsWith("#EXTINF", true)) {
             // Las comas dentro del título («El león, la bruja y el ropero») no deben cortarlo:
