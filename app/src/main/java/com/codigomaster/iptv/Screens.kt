@@ -591,3 +591,35 @@ fun SettingsDialog(store: Store, onSave: () -> Unit, onDismiss: () -> Unit) {
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = Cm.Muted) } }
     )
 }
+
+
+/** Catálogo mixto de anime o contenido infantil: conserva películas y series separadas. */
+@Composable
+fun MixedContentScreen(
+    title: String,
+    movies: List<Entry>,
+    series: List<Series>,
+    wide: Boolean,
+    onPlay: (PlayRequest) -> Unit,
+    onSeries: (Series) -> Unit
+) {
+    if (movies.isEmpty() && series.isEmpty()) {
+        EmptyState(Icons.Filled.Collections, "Sin contenido en $title", "Prueba actualizar el catálogo o revisar los nombres y grupos de la lista.")
+        return
+    }
+    val cardWidth = if (wide) 150.dp else 114.dp
+    LazyColumn(contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        if (movies.isNotEmpty()) item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle("Películas de $title", "${movies.size} títulos")
+                MovieRail(movies, cardWidth, onPlay)
+            }
+        }
+        if (series.isNotEmpty()) item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle("Series de $title", "${series.size} series")
+                SeriesRail(series, cardWidth, onSeries)
+            }
+        }
+    }
+}
