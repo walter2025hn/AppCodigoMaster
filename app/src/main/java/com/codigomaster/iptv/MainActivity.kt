@@ -384,6 +384,7 @@ private fun CodigoMasterApp(store: Store) {
     if (showSettings) {
         SettingsDialog(store, onSave = { showSettings = false; refresh() }, onDismiss = { showSettings = false })
     }
+    }
 }
 
 @Composable
