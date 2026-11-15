@@ -139,9 +139,9 @@ private fun CodigoMasterApp(store: Store) {
                                 break
                             }
                             accumulated.addAll(batch)
-                            loadedEntriesCount = accumulated.size
                             page++
                         }
+                        loadedEntriesCount = accumulated.size
                         entries = accumulated.toList()
                         message = "Actualizando catálogo · ${accumulated.size} de ${manifest.total}"
                     }
