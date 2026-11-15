@@ -113,7 +113,8 @@ class Store(context: Context) {
         prefs.edit().remove("playlist").apply()
     }
 
-    fun readCache(): List<Entry> = try {
+    fun readCache(): List<Entry> {
+        return try {
         if (!cacheFile.exists()) {
             if (legacyCacheFile.exists()) return readLegacyArray(legacyCacheFile.readText(Charsets.UTF_8))
             val legacy = prefs.getString("playlist", "[]").orEmpty()
@@ -149,7 +150,8 @@ class Store(context: Context) {
                 }
             }
         }
-    } catch (_: Exception) { emptyList() }
+        } catch (_: Exception) { emptyList() }
+    }
 
     private fun readLegacyArray(raw: String): List<Entry> {
         val arr = JSONArray(raw)
