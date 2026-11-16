@@ -263,7 +263,9 @@ private fun CodigoMasterApp(store: Store) {
                 selectedMovie = null
                 showSettings = false
             }
-            delay(60_000)
+            // Revisa el control remoto mientras la app está abierta; al suspender,
+            // la pantalla bloqueante aparece sin tener que salir y volver a entrar.
+            delay(10_000)
         }
     }
     LaunchedEffect(entries) { catalog = withContext(Dispatchers.Default) { buildCatalog(entries) } }
