@@ -119,7 +119,8 @@ private fun CodigoMasterApp(store: Store) {
 
                 val changedPages = if (canCompare) {
                     (1..manifest.pageCount).filter { page ->
-                        previousHashes.getOrNull(page - 1) != manifest.pageSha256.getOrNull(page - 1)
+                        previousHashes.size != manifest.pageCount ||
+                            previousHashes.getOrNull(page - 1) != manifest.pageSha256.getOrNull(page - 1)
                     }
                 } else {
                     (1..manifest.pageCount).toList()
