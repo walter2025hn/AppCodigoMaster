@@ -45,17 +45,6 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     buildFeatures { compose = true; buildConfig = true }
-        debug {
-            buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-3940256099942544/9214589741\"")
-            buildConfigField("String", "ADMOB_NATIVE_ID", "\"ca-app-pub-3940256099942544/2247696110\"")
-            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
-        }
-        release {
-            buildConfigField("String", "ADMOB_BANNER_ID", "\"${providers.gradleProperty("ADMOB_BANNER_ID").orElse("").get()}\"")
-            buildConfigField("String", "ADMOB_NATIVE_ID", "\"${providers.gradleProperty("ADMOB_NATIVE_ID").orElse("").get()}\"")
-            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"${providers.gradleProperty("ADMOB_INTERSTITIAL_ID").orElse("").get()}\"")
-        }
-    }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
