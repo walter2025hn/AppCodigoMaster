@@ -101,81 +101,104 @@ private fun CodigoMasterApp(store: Store) {
         if (loading) return
         loading = true
         statusError = false
-        message = "Preparando el catálogo…"
+        message = "Comprobando actualizaciones…"
         scope.launch {
-            val accumulated = mutableListOf<Entry>()
             try {
                 val source = PagedCatalogSource()
-                val first = withContext(Dispatchers.IO) {
-                    val manifest = source.loadManifest()
-                    val page = if (manifest.pageCount > 0) source.loadPage(1) else emptyList()
-                    manifest to page
-                }
-                val manifest = first.first
-                val firstPage = first.second
-                if (firstPage.isEmpty()) {
-                    message = "El catálogo no contiene elementos; se conserva la versión anterior."
-                    statusError = true
+                val manifest = withContext(Dispatchers.IO) { source.loadManifest() }
+                val cached = withContext(Dispatchers.IO) { store.readCache() }
+                val previousHashes = withContext(Dispatchers.IO) { store.readPageHashes(source.cacheKey) }
+                val cachedPages = cached.chunked(manifest.pageSize)
+
+                // Solo se puede sincronizar por diferencias cuando tenemos una copia completa
+                // y las huellas de todas sus páginas. Si no, se realiza una descarga inicial segura.
+                val canCompare = cached.isNotEmpty() &&
+                    previousHashes.isNotEmpty() &&
+                    cachedPages.size == previousHashes.size &&
+                    manifest.pageSha256.size == manifest.pageCount
+
+                val changedPages = if (canCompare) {
+                    (1..manifest.pageCount).filter { page ->
+                        previousHashes.getOrNull(page - 1) != manifest.pageSha256.getOrNull(page - 1)
+                    }
                 } else {
-                    accumulated.addAll(firstPage)
-                    withContext(Dispatchers.IO) { store.saveCache(firstPage) }
-                    entries = firstPage
-                    totalPages = manifest.pageCount
-                    totalEntries = manifest.total
-                    loadedEntriesCount = firstPage.size
-                    message = "Catálogo listo · cargando el resto automáticamente"
+                    (1..manifest.pageCount).toList()
+                }
+
+                totalPages = manifest.pageCount
+                totalEntries = manifest.total
+
+                if (canCompare && changedPages.isEmpty()) {
+                    entries = cached
+                    loadedEntriesCount = cached.size
+                    message = "Catálogo al día · no hay contenido nuevo"
                     initialLoadReady = true
+                    return@launch
+                }
 
-                    // La primera página se prepara durante la animación. El resto se carga
-                    // automáticamente en segundo plano, manteniendo 50 registros por solicitud.
-                    var page = 2
-                    var keepLoading = true
-                    while (page <= manifest.pageCount && keepLoading) {
-                        // El reproductor tiene prioridad absoluta: no se solicitan páginas
-                        // nuevas mientras haya una película/canal reproduciéndose.
+                val pages = MutableList<List<Entry>?>(manifest.pageCount) { index ->
+                    if (canCompare && previousHashes.getOrNull(index) == manifest.pageSha256.getOrNull(index)) {
+                        cachedPages.getOrNull(index)
+                    } else null
+                }
+
+                val initialDownload = !canCompare
+                message = if (initialDownload) {
+                    "Descargando catálogo por primera vez…"
+                } else {
+                    "Descargando solo las páginas modificadas…"
+                }
+
+                // Las páginas no modificadas se conservan desde la caché local.
+                // Las modificadas se solicitan de 50 elementos y en bloques de 20 páginas.
+                for (batchPages in changedPages.chunked(20)) {
+                    while (play != null) delay(500)
+                    for (pageNumber in batchPages) {
                         while (play != null) delay(500)
+                        val pageEntries = withContext(Dispatchers.IO) { source.loadPage(pageNumber) }
+                        require(pageEntries.isNotEmpty()) { "La página $pageNumber llegó vacía; se conserva la caché anterior." }
+                        pages[pageNumber - 1] = pageEntries
+                    }
 
-                        // Descargar un bloque pequeño y luego ceder tiempo a la interfaz.
-                        // Así evitamos ráfagas largas de red y trabajo de catálogo.
-                        val lastPageInBatch = minOf(page + 19, manifest.pageCount)
-                        while (page <= lastPageInBatch && keepLoading) {
-                            while (play != null) delay(500)
-                            val currentPage = page
-                            val batch = withContext(Dispatchers.IO) { source.loadPage(currentPage) }
-                            if (batch.isEmpty()) {
-                                keepLoading = false
-                                break
-                            }
-                            accumulated.addAll(batch)
-                            page++
+                    // En una primera descarga se conserva el prefijo ya recibido por si la app
+                    // se cierra. En una actualización, la caché anterior no se reemplaza hasta
+                    // tener todas las páginas nuevas, evitando dejar una mezcla incompleta.
+                    if (initialDownload) {
+                        val prefix = pages.takeWhile { it != null }.filterNotNull().flatten()
+                        if (prefix.isNotEmpty()) {
+                            withContext(Dispatchers.IO) { store.saveCache(prefix) }
+                            entries = prefix
+                            loadedEntriesCount = prefix.size
                         }
-                        // Persistir cada bloque descargado: si la app se cierra o pierde
-                        // conexión, el contenido ya recibido permanece guardado localmente.
-                        val snapshot = accumulated.distinctBy { it.url }
-                        withContext(Dispatchers.IO) { store.saveCache(snapshot) }
-                        loadedEntriesCount = snapshot.size
-                        entries = snapshot
-                        message = "Actualizando catálogo · ${snapshot.size} de ${manifest.total}"
-}
-                    val complete = accumulated.distinctBy { it.url }
-                    withContext(Dispatchers.IO) { store.saveCache(complete) }
-                    entries = complete
-                    loadedEntriesCount = complete.size
-                    message = if (complete.size >= manifest.total) {
-                        "Catálogo completo · ${complete.size} elementos"
+                    }
+                    message = if (initialDownload) {
+                        "Preparando catálogo…"
                     } else {
-                        "Catálogo disponible · ${complete.size} de ${manifest.total} elementos"
+                        "Aplicando actualizaciones…"
+                    }
+                    initialLoadReady = true
+                }
+
+                require(pages.all { it != null }) { "La sincronización quedó incompleta; se conserva la caché anterior." }
+                val complete = pages.filterNotNull().flatten()
+                require(complete.isNotEmpty()) { "El catálogo recibido está vacío." }
+
+                withContext(Dispatchers.IO) {
+                    store.saveCache(complete)
+                    if (manifest.pageSha256.isNotEmpty()) {
+                        store.savePageHashes(source.cacheKey, manifest.pageSha256)
                     }
                 }
-            } catch (e: Exception) {
-                if (accumulated.isNotEmpty()) {
-                    val partial = accumulated.distinctBy { it.url }
-                    entries = partial
-                    loadedEntriesCount = partial.size
-                    withContext(Dispatchers.IO) { store.saveCache(partial) }
+                entries = complete
+                loadedEntriesCount = complete.size
+                message = if (canCompare) {
+                    "Actualización completada · ${complete.size} elementos"
+                } else {
+                    "Catálogo completo · ${complete.size} elementos"
                 }
+            } catch (e: Exception) {
                 message = if (entries.isNotEmpty()) {
-                    "Catálogo disponible · continúa la actualización en la próxima apertura"
+                    "Catálogo guardado disponible · no se pudo completar la actualización"
                 } else {
                     "No se pudo cargar el catálogo: ${e.message ?: "revisa tu conexión"}"
                 }
