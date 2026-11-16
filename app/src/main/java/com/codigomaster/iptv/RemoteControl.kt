@@ -74,7 +74,7 @@ internal suspend fun loginClient(context: Context, username: String, password: S
             .put("device_name", (Build.MANUFACTURER + " " + Build.MODEL).trim())
             .put("model", Build.MODEL)
             .put("android_version", Build.VERSION.RELEASE ?: "")
-            .put("app_version", "4.7.0")
+            .put("app_version", BuildConfig.VERSION_NAME)
     )
     if (!registered.optBoolean("ok", false)) {
         val reason = registered.optString("reason")
@@ -99,7 +99,7 @@ internal suspend fun loadClientStatus(accessToken: String, deviceKey: String, pl
         !status.optBoolean("account_active", false) -> "Tu cuenta está suspendida o vencida. Contacta al administrador."
         status.optBoolean("global_suspended", false) -> status.optString("maintenance_message", "La aplicación está en mantenimiento.")
         !status.optBoolean("device_registered", false) -> "Este dispositivo no está registrado. Vuelve a iniciar sesión."
-        status.optBoolean("device_blocked", false) -> "Este dispositivo ha sido bloqueado por el administrador."
+        status.optBoolean("device_blocked", false) -> "Este dispositivo ha sido bloqueado por el administrador."+status.optString("device_blocked_reason").takeIf { it.isNotBlank() }?.let { "\nMotivo: $it" }.orEmpty()
         !status.optBoolean("playlist_active", true) -> "La lista que estás usando fue desactivada o suspendida por el administrador."
         else -> ""
     }
