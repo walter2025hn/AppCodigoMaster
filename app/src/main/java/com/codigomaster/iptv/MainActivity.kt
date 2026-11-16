@@ -89,6 +89,10 @@ private fun CodigoMasterApp(store: Store) {
     var showIntro by remember { mutableStateOf(true) }
     var initialLoadReady by remember { mutableStateOf(false) }
     var loadedEntriesCount by remember { mutableIntStateOf(0) }
+    var controlChecked by remember { mutableStateOf(false) }
+    var remoteBlocked by remember { mutableStateOf(true) }
+    var remoteError by remember { mutableStateOf(false) }
+    var remoteMessage by remember { mutableStateOf("Verificando autorización…") }
     var favorites by remember { mutableStateOf(store.favorites()) }
     var recents by remember { mutableStateOf(store.recents()) }
 
@@ -222,13 +226,45 @@ private fun CodigoMasterApp(store: Store) {
     }
 
     LaunchedEffect(Unit) {
-        val cached = withContext(Dispatchers.IO) { store.readCache() }
-        if (cached.isNotEmpty()) {
-            entries = cached
-            loadedEntriesCount = cached.size
-            initialLoadReady = true
+        var wasBlocked = true
+        while (true) {
+            try {
+                val control = loadRemoteAppControl()
+                controlChecked = true
+                remoteError = false
+                remoteBlocked = control.isSuspended
+                remoteMessage = control.maintenanceMessage
+
+                if (control.isSuspended) {
+                    wasBlocked = true
+                    play = null
+                    selectedSeries = null
+                    selectedMovie = null
+                    showSettings = false
+                    initialLoadReady = false
+                } else if (wasBlocked) {
+                    val cached = withContext(Dispatchers.IO) { store.readCache() }
+                    if (cached.isNotEmpty()) {
+                        entries = cached
+                        loadedEntriesCount = cached.size
+                        initialLoadReady = true
+                    }
+                    refresh()
+                    wasBlocked = false
+                }
+            } catch (e: Exception) {
+                controlChecked = true
+                remoteError = true
+                remoteBlocked = true
+                remoteMessage = "No se pudo verificar el permiso de uso. Conéctate a Internet e inténtalo de nuevo."
+                wasBlocked = true
+                play = null
+                selectedSeries = null
+                selectedMovie = null
+                showSettings = false
+            }
+            delay(60_000)
         }
-        refresh()
     }
     LaunchedEffect(entries) { catalog = withContext(Dispatchers.Default) { buildCatalog(entries) } }
     LaunchedEffect(initialLoadReady) {
@@ -274,7 +310,32 @@ private fun CodigoMasterApp(store: Store) {
 
     Surface(Modifier.fillMaxSize(), color = Cm.Bg) {
         val request = play
-        if (request != null) {
+        if (!controlChecked) {
+            Box(Modifier.fillMaxSize().background(Cm.Bg), contentAlignment = Alignment.Center) {
+                Text("Verificando autorización…", color = Cm.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            }
+        } else if (remoteBlocked) {
+            Column(
+                Modifier.fillMaxSize().background(Cm.Bg).padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Image(
+                    painterResource(R.drawable.brand_logo), null,
+                    Modifier.size(112.dp).clip(RoundedCornerShape(24.dp)).border(1.5.dp, Cm.Gold, RoundedCornerShape(24.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(Modifier.height(22.dp))
+                Text(
+                    if (remoteError) "No se pudo verificar el acceso" else "MasterCode TV está suspendida",
+                    color = Cm.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(remoteMessage, color = Cm.Muted, fontSize = 14.sp)
+                Spacer(Modifier.height(14.dp))
+                Text("El acceso se comprobará automáticamente.", color = Cm.Muted, fontSize = 12.sp)
+            }
+        } else if (request != null) {
             PlayerScreen(request, store, favorites, ::toggleFavorite) {
                 play = null
                 recents = store.recents()
@@ -364,7 +425,7 @@ private fun CodigoMasterApp(store: Store) {
         }
     }
 
-    if (showIntro) {
+    if (showIntro && controlChecked && !remoteBlocked) {
         val pulse by rememberInfiniteTransition(label = "intro").animateFloat(
             initialValue = 0.72f, targetValue = 1f,
             animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "introAlpha"
