@@ -13,7 +13,8 @@ data class CatalogManifest(
     val total: Int,
     val pageSize: Int,
     val pageCount: Int,
-    val sourceSha256: String
+    val sourceSha256: String,
+    val pageSha256: List<String>
 )
 
 class PagedCatalogSource(
@@ -26,8 +27,14 @@ class PagedCatalogSource(
             total = json.optInt("total"),
             pageSize = json.optInt("page_size", 50),
             pageCount = json.optInt("page_count"),
-            sourceSha256 = json.optString("source_sha256")
-        ).also { require(it.pageSize == 50 && it.pageCount >= 0) { "Manifiesto de catálogo inválido" } }
+            sourceSha256 = json.optString("source_sha256"),
+            pageSha256 = json.optJSONArray("page_sha256")?.let { hashes ->
+                List(hashes.length()) { index -> hashes.getString(index) }
+            }.orEmpty()
+        ).also {
+            require(it.pageSize == 50 && it.pageCount >= 0) { "Manifiesto de catálogo inválido" }
+            require(it.pageSha256.isEmpty() || it.pageSha256.size == it.pageCount) { "Huellas del catálogo incompletas" }
+        }
     }
 
     fun loadPage(page: Int): List<Entry> {
