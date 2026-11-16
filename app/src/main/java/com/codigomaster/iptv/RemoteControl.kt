@@ -13,7 +13,12 @@ private const val CM_SUPABASE_URL = "https://drfzysksothwyyyzgkqe.supabase.co"
 private val CM_ANON_KEY = intArrayOf(101,121,74,104,98,71,99,105,79,105,74,73,85,122,73,49,78,105,73,115,73,110,82,53,99,67,73,54,73,107,112,88,86,67,74,57,46,101,121,74,112,99,51,77,105,79,105,74,122,100,88,66,104,89,109,70,122,90,83,73,115,73,110,74,108,90,105,73,54,73,109,82,121,90,110,112,53,99,50,116,122,98,51,82,111,100,51,108,53,101,88,112,110,97,51,70,108,73,105,119,105,99,109,57,115,90,83,73,54,73,109,70,117,98,50,52,105,76,67,74,112,89,88,81,105,79,106,69,51,79,84,81,51,79,68,99,52,79,84,81,115,73,109,86,52,99,67,73,54,77,106,69,120,77,68,77,50,77,122,103,53,78,72,48,46,106,77,107,65,103,86,86,122,108,98,68,106,87,102,52,88,70,45,50,104,116,115,103,120,85,89,98,102,45,115,103,75,54,74,76,54,51,53,115,89,100,118,89).joinToString("") { it.toChar().toString() }
 
 internal data class ClientSession(val accessToken: String, val userId: String, val deviceKey: String)
-internal data class RemoteAppControl(val isSuspended: Boolean, val maintenanceMessage: String, val contentEnabled: Boolean)
+internal data class ClientAnnouncement(val id: String, val title: String, val message: String, val forceAck: Boolean)
+internal data class AppRelease(val versionName: String, val versionCode: Int, val downloadUrl: String, val releaseNotes: String, val forceUpdate: Boolean)
+internal data class RemoteAppControl(
+    val isSuspended: Boolean, val maintenanceMessage: String, val contentEnabled: Boolean,
+    val announcements: List<ClientAnnouncement> = emptyList(), val latestRelease: AppRelease? = null
+)
 
 private fun requestJson(url: String, method: String, token: String? = null, body: JSONObject? = null): JSONObject {
     val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -98,7 +103,25 @@ internal suspend fun loadClientStatus(accessToken: String, deviceKey: String, pl
         !status.optBoolean("playlist_active", true) -> "La lista que estás usando fue desactivada o suspendida por el administrador."
         else -> ""
     }
-    RemoteAppControl(message.isNotBlank(), message, status.optBoolean("content_enabled", true))
+    val announcementsJson = status.optJSONArray("announcements")
+    val announcements = buildList {
+        if (announcementsJson != null) for (i in 0 until announcementsJson.length()) {
+            val item = announcementsJson.optJSONObject(i) ?: continue
+            add(ClientAnnouncement(item.optString("id"), item.optString("title"), item.optString("message"), item.optBoolean("force_ack")))
+        }
+    }
+    val releaseJson = status.optJSONObject("latest_release")
+    val release = releaseJson?.let {
+        AppRelease(it.optString("version_name"), it.optInt("version_code"), it.optString("download_url"), it.optString("release_notes"), it.optBoolean("force_update"))
+    }
+    RemoteAppControl(message.isNotBlank(), message, status.optBoolean("content_enabled", true), announcements, release)
+}
+
+internal suspend fun acknowledgeClientAnnouncement(accessToken: String, deviceKey: String, announcementId: String) = withContext(Dispatchers.IO) {
+    requestJson(
+        "$CM_SUPABASE_URL/functions/v1/master-control", "POST", accessToken,
+        JSONObject().put("action", "client_ack_announcement").put("device_key", deviceKey).put("announcement_id", announcementId)
+    )
 }
 
 
