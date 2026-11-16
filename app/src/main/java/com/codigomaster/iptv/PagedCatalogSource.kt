@@ -19,7 +19,9 @@ data class CatalogManifest(
 
 class PagedCatalogSource(
     private val baseUrl: String = "https://raw.githubusercontent.com/walter2025hn/MiListaPremium/main/catalog_pages"
-) {
+ ) {
+    val cacheKey: String get() = baseUrl
+
     fun loadManifest(): CatalogManifest {
         val json = JSONObject(get("$baseUrl/manifest.json"))
         require(json.optInt("schema") == 1) { "Versión de catálogo no compatible" }
