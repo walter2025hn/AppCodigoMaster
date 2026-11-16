@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         super.onCreate(savedInstanceState)
+        if (!isTelevision(this)) AdsConsentManager.gatherConsent(this)
         val store = Store(applicationContext)
         val tv = isTelevision(this)
         val ratings = RatingsRepo(store)
@@ -162,6 +163,16 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     var statusError by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     var section by remember { mutableStateOf(Section.HOME) }
+    var lastAdSection by remember { mutableStateOf(Section.HOME) }
+    LaunchedEffect(section, play, controlChecked, remoteBlocked) {
+        if (lastAdSection != section) {
+            lastAdSection = section
+            if (play == null && controlChecked && !remoteBlocked && !tv) {
+                delay(500)
+                (context as? Activity)?.let { AdsManager.showInterstitial(it) }
+            }
+        }
+    }
     var selectedSeries by remember { mutableStateOf<Series?>(null) }
     var selectedMovie by remember { mutableStateOf<Entry?>(null) }
     var play by remember { mutableStateOf<PlayRequest?>(null) }
@@ -513,7 +524,9 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                     catalogEmpty -> 1
                     else -> 0
                 }
-                ClassicHome(
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) {
+                        ClassicHome(
                     state = classicState, store = store, catalog = catalog,
                     fLive = fLive, fMovies = fMovies, fSeries = fSeries,
                     q = q, search = search, onSearch = { search = it },
@@ -525,7 +538,10 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                     onPlay = { play = it }, onSeries = { selectedSeries = it; selectedMovie = null },
                     onMovie = { selectedMovie = it; selectedSeries = null },
                     onToggleFavorite = ::toggleFavorite
-                )
+                        )
+                    }
+                    if (!tv) BannerAd()
+                }
             }
         } else {
             Row(Modifier.fillMaxSize().then(if (tv) Modifier.padding(end = 18.dp, top = 6.dp, bottom = 6.dp) else Modifier)) {
@@ -543,6 +559,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                         }
                     } else {
                         TopBar(section, search, { search = it }, loading, wide, ::refresh, { showSettings = true })
+                        if (!tv && section == Section.HOME && selectedSeries == null) NativeAdCard()
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             when {
                                 entries.isEmpty() && loading -> LoadingState()
@@ -572,6 +589,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                             }
                         }
                     if (!wide && detail == null) BottomBar(section) { section = it; search = "" }
+                    if (!tv) BannerAd()
                 }
             }
         }
