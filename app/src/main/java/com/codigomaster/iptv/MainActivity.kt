@@ -2,6 +2,8 @@ package com.codigomaster.iptv
 
 import android.os.Bundle
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -172,6 +174,9 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     var remoteBlocked by remember { mutableStateOf(true) }
     var remoteError by remember { mutableStateOf(false) }
     var remoteMessage by remember { mutableStateOf("Verificando autorización…") }
+    var pendingAnnouncement by remember { mutableStateOf<ClientAnnouncement?>(null) }
+    var availableRelease by remember { mutableStateOf<AppRelease?>(null) }
+    var dismissedReleaseCode by remember { mutableIntStateOf(0) }
     var contentEnabled by remember { mutableStateOf(true) }
     var favorites by remember { mutableStateOf(store.favorites()) }
     var recents by remember { mutableStateOf(store.recents()) }
@@ -345,6 +350,9 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                 remoteError = false
                 remoteBlocked = control.isSuspended
                 remoteMessage = control.maintenanceMessage
+                if (pendingAnnouncement == null) pendingAnnouncement = control.announcements.firstOrNull()
+                val candidateRelease = control.latestRelease
+                availableRelease = candidateRelease?.takeIf { it.versionCode > BuildConfig.VERSION_CODE && it.versionCode != dismissedReleaseCode }
                 val catalogPermissionChanged = previousContentEnabled != null &&
                     previousContentEnabled != control.contentEnabled
                 contentEnabled = control.contentEnabled
@@ -596,6 +604,43 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
         }
     }
 
+    pendingAnnouncement?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { if (!notice.forceAck) pendingAnnouncement = null },
+            containerColor = Cm.SurfaceHi,
+            titleContentColor = Cm.Text,
+            textContentColor = Cm.Text,
+            title = { Text(notice.title, fontWeight = FontWeight.Bold) },
+            text = { Text(notice.message) },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        try { acknowledgeClientAnnouncement(accessToken, deviceKey, notice.id); pendingAnnouncement = null } catch (_: Exception) { }
+                    }
+                }) { Text("ENTENDIDO", color = Cm.Gold, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                if (!notice.forceAck) TextButton(onClick = { pendingAnnouncement = null }) { Text("CERRAR", color = Cm.Muted) }
+            }
+        )
+    }
+
+    availableRelease?.let { release ->
+        AlertDialog(
+            onDismissRequest = { if (!release.forceUpdate) dismissedReleaseCode = release.versionCode },
+            containerColor = Cm.SurfaceHi,
+            titleContentColor = Cm.Text,
+            textContentColor = Cm.Text,
+            title = { Text("Actualización disponible · ${release.versionName}", fontWeight = FontWeight.Bold) },
+            text = { Text(release.releaseNotes.ifBlank { "Hay una nueva versión de MasterCode TV disponible." }) },
+            confirmButton = {
+                TextButton(onClick = { try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.downloadUrl))) } catch (_: Exception) { } }) { Text("ACTUALIZAR", color = Cm.Gold, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                if (!release.forceUpdate) TextButton(onClick = { dismissedReleaseCode = release.versionCode }) { Text("MÁS TARDE", color = Cm.Muted) }
+            }
+        )
+    }
     if (showExitDialog) {
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
