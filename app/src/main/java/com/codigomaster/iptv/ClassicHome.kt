@@ -345,8 +345,12 @@ private fun TvTab(
         // La vista previa ocupa todo el espacio disponible (16:9 como máximo).
         BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().padding(end = 4.dp), contentAlignment = Alignment.Center) {
             val w = minOf(maxWidth, maxHeight * (16f / 9f))
-            LivePreview(current, store, Modifier.width(w).aspectRatio(16f / 9f), state.group ?: "Todos", onPickGroup) {
-                onPlay(PlayRequest(shown, currentIndex.coerceAtLeast(0), true))
+            // Fuerza a Compose a desmontar el reproductor anterior y crear una superficie
+            // nueva al cambiar de canal; evita que el vídeo anterior quede congelado en preview.
+            key(current.url) {
+                LivePreview(current, store, Modifier.width(w).aspectRatio(16f / 9f), state.group ?: "Todos", onPickGroup) {
+                    onPlay(PlayRequest(shown, currentIndex.coerceAtLeast(0), true))
+                }
             }
         }
         Column(Modifier.width(listW.dp).fillMaxHeight().padding(start = (6 * s).dp)) {
