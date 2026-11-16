@@ -135,6 +135,7 @@ $("catalogPrev").onclick=()=>loadCatalogPage(catalogPageNo-1).catch(e=>say("cata
 $("catalogNext").onclick=()=>loadCatalogPage(catalogPageNo+1).catch(e=>say("catalogMsg",e.message));
 $("catalogSearch").oninput=renderCatalog;$("catalogGroup").onchange=renderCatalog;
 document.querySelectorAll("[data-catalog]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-catalog]").forEach(x=>x.classList.toggle("active",x===b));catalogType=b.dataset.catalog;loadCatalogPage(1).catch(e=>say("catalogMsg",e.message))});
-\ndocument.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));["clients","devices","playlists","global","monitor","catalog"].forEach(t=>$("tab-"+t).classList.toggle("hidden",t!==b.dataset.tab))});
+
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));["clients","devices","playlists","global","monitor","catalog"].forEach(t=>$("tab-"+t).classList.toggle("hidden",t!==b.dataset.tab))});
 (async()=>{const {data}=await db.auth.getSession();if(data.session){try{show(true);await loadAll()}catch(e){show(false);say("loginMsg",e.message)}}})();
 </script></body></html>
