@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.codigomaster.iptv"
-        minSdk = 24
+        minSdk = 23
         manifestPlaceholders["admobAppId"] = providers.gradleProperty("ADMOB_APP_ID")
             .orElse("ca-app-pub-3940256099942544~3347511713").get()
         targetSdk = 35
@@ -73,7 +73,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // AdMob: banner, native, interstitial and consent.
-    implementation("com.google.android.gms:play-services-ads:25.5.0")
+    implementation("com.google.android.gms:play-services-ads:24.9.0")
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
