@@ -2,6 +2,8 @@ package com.codigomaster.iptv
 
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
+import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -19,6 +21,16 @@ internal data class RemoteAppControl(
     val isSuspended: Boolean, val maintenanceMessage: String, val contentEnabled: Boolean,
     val announcements: List<ClientAnnouncement> = emptyList(), val latestRelease: AppRelease? = null
 )
+
+private fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
+    .digest(value.toByteArray(Charsets.UTF_8))
+    .joinToString("") { "%02x".format(it) }
+
+private fun androidDeviceIdHash(context: Context): String {
+    val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+    // Hash before transmission; never send or store the raw Android ID.
+    return if (androidId.isBlank()) "" else sha256Hex("codigo-master-device-v1:$androidId")
+}
 
 private fun requestJson(url: String, method: String, token: String? = null, body: JSONObject? = null): JSONObject {
     val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -71,6 +83,7 @@ internal suspend fun loginClient(context: Context, username: String, password: S
         JSONObject()
             .put("action", "client_register_device")
             .put("device_key", key)
+            .put("android_id_hash", androidDeviceIdHash(context))
             .put("device_name", (Build.MANUFACTURER + " " + Build.MODEL).trim())
             .put("model", Build.MODEL)
             .put("android_version", Build.VERSION.RELEASE ?: "")
@@ -91,11 +104,11 @@ internal suspend fun loginClient(context: Context, username: String, password: S
 
 internal class ClientSessionInvalidException(message: String) : IllegalStateException(message)
 
-internal suspend fun loadClientStatus(accessToken: String, deviceKey: String, playlistId: String = ""): RemoteAppControl = withContext(Dispatchers.IO) {
+internal suspend fun loadClientStatus(context: Context, accessToken: String, deviceKey: String, playlistId: String = ""): RemoteAppControl = withContext(Dispatchers.IO) {
     val status = requestJson(
         "$CM_SUPABASE_URL/functions/v1/master-control",
         "POST", accessToken,
-        JSONObject().put("action", "client_status").put("device_key", deviceKey).put("playlist_id", playlistId)
+        JSONObject().put("action", "client_status").put("device_key", deviceKey).put("android_id_hash", androidDeviceIdHash(context)).put("playlist_id", playlistId)
     )
     // Una cuenta eliminada, vencida o suspendida debe permitir iniciar con otra.
     // Un dispositivo bloqueado es distinto: conserva la sesión y permanece bloqueado,
