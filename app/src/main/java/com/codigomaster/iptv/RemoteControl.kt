@@ -69,7 +69,7 @@ internal suspend fun loginClient(context: Context, username: String, password: S
             .put("device_name", (Build.MANUFACTURER + " " + Build.MODEL).trim())
             .put("model", Build.MODEL)
             .put("android_version", Build.VERSION.RELEASE ?: "")
-            .put("app_version", "4.5.0")
+            .put("app_version", "4.6.0")
     )
     if (!registered.optBoolean("ok", false)) {
         val reason = registered.optString("reason")
