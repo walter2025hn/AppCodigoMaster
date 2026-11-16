@@ -65,6 +65,19 @@ class Store(context: Context) {
         get() = prefs.getString("engine", "AUTO").orEmpty().ifBlank { "AUTO" }
         set(value) { prefs.edit().putString("engine", value).apply() }
 
+    /** Colores de apariencia personalizados (ARGB hexadecimal). */
+    var backgroundColor: String
+        get() = prefs.getString("appearance_bg", "#FF05070D").orEmpty()
+        set(value) { prefs.edit().putString("appearance_bg", value).apply() }
+
+    var textColor: String
+        get() = prefs.getString("appearance_text", "#FFF3F6FB").orEmpty()
+        set(value) { prefs.edit().putString("appearance_text", value).apply() }
+
+    var selectionColor: String
+        get() = prefs.getString("appearance_selection", "#FF4DA3FF").orEmpty()
+        set(value) { prefs.edit().putString("appearance_selection", value).apply() }
+
     /** Control parental: filtra categorías y títulos adultos del catálogo visible. */
     var parentalProtectionEnabled: Boolean
         get() = prefs.getBoolean("parental_enabled", false) && prefs.getString("parental_pin_hash", null) != null
