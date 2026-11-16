@@ -16,8 +16,8 @@ android {
         targetSdk = 35
         // libVLC incluye código nativo: solo las ABI de TV Box, Fire TV y móviles actuales.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
-        versionCode = 22
-        versionName = "4.13.0"
+        versionCode = 23
+        versionName = "4.14.0"
     }
 
     buildTypes {
