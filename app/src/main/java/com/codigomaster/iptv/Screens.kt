@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -33,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -528,10 +531,34 @@ fun SeriesDetail(
 // ───────────────────────────── Ajustes ─────────────────────────────
 
 @Composable
-fun SettingsDialog(store: Store, onSave: () -> Unit, onDismiss: () -> Unit) {
+fun SettingsDialog(
+    store: Store,
+    accessToken: String,
+    deviceKey: String,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit
+) {
     var engine by remember { mutableStateOf(store.engine) }
     var url by remember { mutableStateOf(store.playlistUrl) }
     var tmdb by remember { mutableStateOf(store.tmdbKey) }
+    var m3uName by remember { mutableStateOf("Mi lista M3U") }
+    var xtreamName by remember { mutableStateOf("Mi conexión Xtream") }
+    var xtreamServer by remember { mutableStateOf("") }
+    var xtreamUser by remember { mutableStateOf("") }
+    var xtreamPassword by remember { mutableStateOf("") }
+    var playlists by remember { mutableStateOf(emptyList<ClientPlaylist>()) }
+    var busy by remember { mutableStateOf(false) }
+    var playlistMessage by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    suspend fun reloadPlaylists() {
+        playlists = listClientPlaylists(accessToken, deviceKey)
+    }
+
+    LaunchedEffect(accessToken, deviceKey) {
+        try { reloadPlaylists() } catch (e: Exception) { playlistMessage = e.message ?: "No se pudieron cargar tus listas." }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Cm.SurfaceHi,
@@ -539,7 +566,10 @@ fun SettingsDialog(store: Store, onSave: () -> Unit, onDismiss: () -> Unit) {
         textContentColor = Cm.Text,
         title = { Text("Ajustes", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text("MOTOR DE REPRODUCCIÓN", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                 listOf(
                     Triple("AUTO", "Automático (recomendado)", "ExoPlayer primero; si falla, cambia solo a VLC"),
@@ -557,18 +587,132 @@ fun SettingsDialog(store: Store, onSave: () -> Unit, onDismiss: () -> Unit) {
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text("LISTA M3U PERSONALIZADA", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+
+                Divider(color = Cm.Outline)
+                Text("MI LISTA M3U", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                OutlinedTextField(
+                    value = m3uName, onValueChange = { m3uName = it },
+                    label = { Text("Nombre de la lista") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
                 OutlinedTextField(
                     value = url, onValueChange = { url = it },
-                    placeholder = { Text("Vacío = lista de Código Master", fontSize = 12.sp) },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Cm.Gold, unfocusedBorderColor = Cm.Outline, cursorColor = Cm.Gold,
-                        focusedTextColor = Cm.Text, unfocusedTextColor = Cm.Text
-                    )
+                    placeholder = { Text("https://servidor/lista.m3u", fontSize = 12.sp) },
+                    label = { Text("URL M3U") }, singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !busy && url.startsWith("http", true) && m3uName.isNotBlank(),
+                        onClick = {
+                            scope.launch {
+                                busy = true; playlistMessage = "Guardando lista M3U…"
+                                try {
+                                    val id = saveM3uPlaylist(accessToken, deviceKey, m3uName, url.trim())
+                                    reloadPlaylists()
+                                    store.selectedPlaylistId = id
+                                    store.playlistUrl = url.trim()
+                                    playlistMessage = "Lista M3U guardada en tu cuenta."
+                                    onSave()
+                                } catch (e: Exception) {
+                                    playlistMessage = e.message ?: "No se pudo guardar la lista."
+                                } finally { busy = false }
+                            }
+                        }
+                    ) { Text("Guardar en mi cuenta") }
+                    TextButton(onClick = {
+                        store.selectedPlaylistId = ""
+                        store.playlistUrl = url.trim()
+                        onSave()
+                    }) { Text("Usar solo aquí", color = Cm.Gold) }
+                }
+
+                Divider(color = Cm.Outline)
+                Text("CONEXIÓN XTREAM CODES", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                OutlinedTextField(
+                    value = xtreamName, onValueChange = { xtreamName = it },
+                    label = { Text("Nombre de la conexión") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = xtreamServer, onValueChange = { xtreamServer = it },
+                    label = { Text("Servidor (https://...)") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = xtreamUser, onValueChange = { xtreamUser = it },
+                    label = { Text("Usuario Xtream") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = xtreamPassword, onValueChange = { xtreamPassword = it },
+                    label = { Text("Contraseña Xtream") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    enabled = !busy && xtreamServer.startsWith("http", true) && xtreamUser.isNotBlank() && xtreamPassword.isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            busy = true; playlistMessage = "Guardando conexión Xtream cifrada…"
+                            try {
+                                val id = saveXtreamPlaylist(accessToken, deviceKey, xtreamName, xtreamServer, xtreamUser, xtreamPassword)
+                                reloadPlaylists()
+                                val saved = playlists.firstOrNull { it.id == id }
+                                    ?: listClientPlaylists(accessToken, deviceKey).first { it.id == id }
+                                val streamUrl = loadClientPlaylistUrl(accessToken, deviceKey, saved)
+                                store.selectedPlaylistId = id
+                                store.playlistUrl = streamUrl
+                                playlistMessage = "Conexión Xtream guardada y seleccionada."
+                                xtreamPassword = ""
+                                onSave()
+                            } catch (e: Exception) {
+                                playlistMessage = e.message ?: "No se pudo guardar Xtream."
+                            } finally { busy = false }
+                        }
+                    }
+                ) { Text(if (busy) "PROCESANDO…" else "Guardar conexión Xtream") }
+
+                Divider(color = Cm.Outline)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Text("MIS LISTAS GUARDADAS", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    TextButton(enabled = !busy, onClick = { scope.launch { try { reloadPlaylists() } catch (e: Exception) { playlistMessage = e.message ?: "Error" } } }) {
+                        Text("Actualizar", color = Cm.Gold)
+                    }
+                }
+                if (playlists.isEmpty()) {
+                    Text("Todavía no tienes listas guardadas en tu cuenta.", color = Cm.Muted, fontSize = 11.sp)
+                } else {
+                    playlists.forEach { item ->
+                        val active = item.isEnabled && !item.isSuspended
+                        Row(
+                            Modifier.fillMaxWidth().background(Cm.SurfaceTop, RoundedCornerShape(10.dp)).padding(9.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(item.name, color = Cm.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    (if (item.sourceType == "xtream") "Xtream · " + item.serverUrl else "M3U") +
+                                        if (active) " · Activa" else " · Suspendida",
+                                    color = if (active) Cm.Muted else Cm.Gold, fontSize = 10.sp, maxLines = 2
+                                )
+                            }
+                            Button(
+                                enabled = !busy && active,
+                                onClick = {
+                                    scope.launch {
+                                        busy = true
+                                        try {
+                                            val streamUrl = loadClientPlaylistUrl(accessToken, deviceKey, item)
+                                            store.selectedPlaylistId = item.id
+                                            store.playlistUrl = streamUrl
+                                            playlistMessage = "Lista seleccionada."
+                                            onSave()
+                                        } catch (e: Exception) {
+                                            playlistMessage = e.message ?: "No se pudo activar la lista."
+                                        } finally { busy = false }
+                                    }
+                                }
+                            ) { Text("Usar", fontSize = 11.sp) }
+                        }
+                    }
+                }
+                if (playlistMessage.isNotBlank()) Text(playlistMessage, color = Cm.Gold, fontSize = 11.sp)
+                Divider(color = Cm.Outline)
                 Text("CALIFICACIONES DEL PÚBLICO (TMDB)", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                 OutlinedTextField(
                     value = tmdb, onValueChange = { tmdb = it },
@@ -579,16 +723,15 @@ fun SettingsDialog(store: Store, onSave: () -> Unit, onDismiss: () -> Unit) {
                         focusedTextColor = Cm.Text, unfocusedTextColor = Cm.Text
                     )
                 )
-                Text("Crea una cuenta gratis en themoviedb.org › Ajustes › API y pega aquí la clave. Sin clave, solo verás tus propias estrellas.", color = Cm.Muted, fontSize = 10.sp)
-                Text("Usa únicamente listas y transmisiones para las que tengas autorización.", color = Cm.Muted, fontSize = 10.sp)
+                Text("Las contraseñas Xtream se guardan cifradas en el servidor. Usa únicamente listas y transmisiones para las que tengas autorización.", color = Cm.Muted, fontSize = 10.sp)
             }
         },
         confirmButton = {
-            TextButton(onClick = { store.engine = engine; store.playlistUrl = url; store.tmdbKey = tmdb; onSave() }) {
-                Text("Guardar", color = Cm.Gold, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { store.engine = engine; store.tmdbKey = tmdb; onSave() }) {
+                Text("Guardar ajustes", color = Cm.Gold, fontWeight = FontWeight.Bold)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = Cm.Muted) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cerrar", color = Cm.Muted) } }
     )
 }
 
