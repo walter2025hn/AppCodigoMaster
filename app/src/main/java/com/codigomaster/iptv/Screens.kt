@@ -611,6 +611,7 @@ fun SettingsDialog(
                                     reloadPlaylists()
                                     store.selectedPlaylistId = id
                                     store.playlistUrl = ""
+                                    url = ""
                                     playlistMessage = "Lista M3U guardada en tu cuenta."
                                     onSave()
                                 } catch (e: Exception) {
@@ -658,6 +659,7 @@ fun SettingsDialog(
                                 val streamUrl = loadClientPlaylistUrl(accessToken, deviceKey, saved)
                                 store.selectedPlaylistId = id
                                 store.playlistUrl = ""
+                                url = ""
                                 playlistMessage = "Conexión Xtream guardada y seleccionada."
                                 xtreamPassword = ""
                                 onSave()
@@ -701,6 +703,7 @@ fun SettingsDialog(
                                             val streamUrl = loadClientPlaylistUrl(accessToken, deviceKey, item)
                                             store.selectedPlaylistId = item.id
                                             store.playlistUrl = ""
+                                            url = ""
                                             playlistMessage = "Lista seleccionada."
                                             onSave()
                                         } catch (e: Exception) {
@@ -728,7 +731,7 @@ fun SettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { store.engine = engine; store.tmdbKey = tmdb; onSave() }) {
+            TextButton(onClick = { store.engine = engine; if (url.isNotBlank()) { store.selectedPlaylistId = ""; store.playlistUrl = url.trim() }; store.tmdbKey = tmdb; onSave() }) {
                 Text("Guardar ajustes", color = Cm.Gold, fontWeight = FontWeight.Bold)
             }
         },
