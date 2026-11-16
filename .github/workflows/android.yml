@@ -39,7 +39,17 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Build APK
-        run: gradle assembleRelease
+        env:
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+          ADMOB_BANNER_ID: ${{ secrets.ADMOB_BANNER_ID }}
+          ADMOB_NATIVE_ID: ${{ secrets.ADMOB_NATIVE_ID }}
+          ADMOB_INTERSTITIAL_ID: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
+        run: |
+          gradle assembleRelease \
+            -PADMOB_APP_ID="$ADMOB_APP_ID" \
+            -PADMOB_BANNER_ID="$ADMOB_BANNER_ID" \
+            -PADMOB_NATIVE_ID="$ADMOB_NATIVE_ID" \
+            -PADMOB_INTERSTITIAL_ID="$ADMOB_INTERSTITIAL_ID"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
