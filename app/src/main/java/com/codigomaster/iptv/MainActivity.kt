@@ -163,16 +163,6 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     var statusError by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     var section by remember { mutableStateOf(Section.HOME) }
-    var lastAdSection by remember { mutableStateOf(Section.HOME) }
-    LaunchedEffect(section, play, controlChecked, remoteBlocked) {
-        if (lastAdSection != section) {
-            lastAdSection = section
-            if (play == null && controlChecked && !remoteBlocked && !tv) {
-                delay(500)
-                (context as? Activity)?.let { AdsManager.showInterstitial(it) }
-            }
-        }
-    }
     var selectedSeries by remember { mutableStateOf<Series?>(null) }
     var selectedMovie by remember { mutableStateOf<Entry?>(null) }
     var play by remember { mutableStateOf<PlayRequest?>(null) }
@@ -191,6 +181,16 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     var contentEnabled by remember { mutableStateOf(true) }
     var favorites by remember { mutableStateOf(store.favorites()) }
     var recents by remember { mutableStateOf(store.recents()) }
+    var lastAdSection by remember { mutableStateOf(Section.HOME) }
+    LaunchedEffect(section, play, controlChecked, remoteBlocked) {
+        if (lastAdSection != section) {
+            lastAdSection = section
+            if (play == null && controlChecked && !remoteBlocked && !tv) {
+                delay(500)
+                (context as? Activity)?.let { AdsManager.showInterstitial(it) }
+            }
+        }
+    }
 
     fun toggleFavorite(key: String) {
         favorites = if (key in favorites) favorites - key else favorites + key
