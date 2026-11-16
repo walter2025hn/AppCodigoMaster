@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -550,6 +551,11 @@ fun SettingsDialog(
     var playlists by remember { mutableStateOf(emptyList<ClientPlaylist>()) }
     var busy by remember { mutableStateOf(false) }
     var playlistMessage by remember { mutableStateOf("") }
+    var parentalEnabled by remember { mutableStateOf(store.parentalProtectionEnabled) }
+    var currentParentalPin by remember { mutableStateOf("") }
+    var newParentalPin by remember { mutableStateOf("") }
+    var confirmParentalPin by remember { mutableStateOf("") }
+    var parentalMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     suspend fun reloadPlaylists() {
@@ -588,6 +594,67 @@ fun SettingsDialog(
                         }
                     }
                 }
+
+                Divider(color = Cm.Outline)
+                Text("CONTROL PARENTAL · CONTENIDO +18", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                Text(
+                    if (parentalEnabled) "Protección activada: se ocultan títulos y categorías identificados como adultos."
+                    else "Protección desactivada. Configura un PIN para ocultar el contenido adulto.",
+                    color = Cm.Muted, fontSize = 11.sp
+                )
+                if (store.hasParentalPin()) {
+                    OutlinedTextField(
+                        value = currentParentalPin, onValueChange = { currentParentalPin = it.filter(Char::isDigit).take(6) },
+                        label = { Text("PIN actual") }, singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                OutlinedTextField(
+                    value = newParentalPin, onValueChange = { newParentalPin = it.filter(Char::isDigit).take(6) },
+                    label = { Text(if (store.hasParentalPin()) "Nuevo PIN (4 a 6 dígitos)" else "Crear PIN (4 a 6 dígitos)") },
+                    singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = confirmParentalPin, onValueChange = { confirmParentalPin = it.filter(Char::isDigit).take(6) },
+                    label = { Text("Confirmar PIN") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = newParentalPin.length in 4..6 && confirmParentalPin == newParentalPin &&
+                            (!store.hasParentalPin() || currentParentalPin.length in 4..6),
+                        onClick = {
+                            if (store.hasParentalPin() && !store.verifyParentalPin(currentParentalPin)) {
+                                parentalMessage = "El PIN actual no es correcto."
+                            } else {
+                                try {
+                                    store.setParentalPin(newParentalPin)
+                                    parentalEnabled = true
+                                    currentParentalPin = ""; newParentalPin = ""; confirmParentalPin = ""
+                                    parentalMessage = "PIN guardado. El contenido +18 está bloqueado."
+                                } catch (e: Exception) { parentalMessage = e.message ?: "No se pudo guardar el PIN." }
+                            }
+                        }
+                    ) { Text(if (store.hasParentalPin()) "Cambiar PIN" else "Crear PIN") }
+                    if (parentalEnabled) {
+                        OutlinedButton(
+                            enabled = currentParentalPin.length in 4..6,
+                            onClick = {
+                                if (store.verifyParentalPin(currentParentalPin)) {
+                                    store.parentalProtectionEnabled = false
+                                    parentalEnabled = false
+                                    currentParentalPin = ""
+                                    parentalMessage = "Protección parental desactivada."
+                                } else parentalMessage = "El PIN actual no es correcto."
+                            }
+                        ) { Text("Desactivar") }
+                    }
+                }
+                if (parentalMessage.isNotBlank()) Text(parentalMessage, color = Cm.Gold, fontSize = 11.sp)
+                Text("El PIN se guarda como hash con salt; no se almacena en texto legible. El filtro se basa en nombres y categorías de la lista, por lo que conviene revisar las etiquetas de tu proveedor.", color = Cm.Muted, fontSize = 10.sp)
 
                 Divider(color = Cm.Outline)
                 Text("MI LISTA M3U", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
