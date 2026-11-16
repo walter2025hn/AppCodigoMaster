@@ -61,7 +61,7 @@ async function loadMonitor(){
  if(maintRes.ok){const m=await maintRes.json();$("monProgress").textContent="Cursor "+(m.cursor??0)+" de "+(m.total_entries??m.total??"—")+" · lote "+(m.batch_size??"—")}
  if(verifyRes.ok){const v=await verifyRes.json();$("monProgress").textContent+=" · Verificación: "+(v.cursor??0)+" de "+(v.total_urls??"—")}
  if(linksRes.ok)$("linksReport").textContent=(await linksRes.text()).slice(0,6000);if(reportRes.ok)$("maintReport").textContent=(await reportRes.text()).slice(0,6000);
- if(indexRes.ok){const ix=await indexRes.json();for(const [k,id] of [["movies","monMovies"],["series","monSeries"],["live","monLive"]])$(id).textContent=Number(ix.categories?.[k]?.total||0).toLocaleString();$("monTotal").textContent=Object.values(ix.categories||{}).reduce((a,v)=>a+Number(v.total||0),0).toLocaleString()}
+ if(indexRes.ok){const ix=await indexRes.json();for(const [k,id] of [["movies","monMovies"],["series","monSeries"],["live","monLive"]])$(id).textContent=Number(ix.categories?.[k]?.total||0).toLocaleString();$("monTotal").textContent=Number(ix.total||0).toLocaleString()}
 }
 async function loadCatalogIndex(){const r=await fetch(GHRAW+"catalog_pages/catalog_index.json");if(!r.ok)throw Error("El índice por categorías aún no está publicado. Ejecuta la reconstrucción del catálogo.");catalogIndex=await r.json();await loadCatalogPage(1)}
 async function loadCatalogPage(page){
