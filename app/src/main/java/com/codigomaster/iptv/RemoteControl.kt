@@ -89,6 +89,8 @@ internal suspend fun loginClient(context: Context, username: String, password: S
     ClientSession(token, userId, key)
 }
 
+internal class ClientSessionInvalidException(message: String) : IllegalStateException(message)
+
 internal suspend fun loadClientStatus(accessToken: String, deviceKey: String, playlistId: String = ""): RemoteAppControl = withContext(Dispatchers.IO) {
     val status = requestJson(
         "$CM_SUPABASE_URL/functions/v1/master-control",
