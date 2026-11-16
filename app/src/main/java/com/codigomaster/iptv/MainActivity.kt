@@ -9,7 +9,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -20,6 +22,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -29,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -431,9 +436,9 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     }
 
     LaunchedEffect(entries) { catalog = withContext(Dispatchers.Default) { buildCatalog(entries) } }
-    LaunchedEffect(initialLoadReady) {
-        if (initialLoadReady) {
-            delay(1400)
+    LaunchedEffect(initialLoadReady, controlChecked, remoteBlocked) {
+        if (initialLoadReady && controlChecked && !remoteBlocked) {
+            delay(3600)
             showIntro = false
         }
     }
@@ -600,28 +605,44 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     }
 
     if (showIntro && controlChecked && !remoteBlocked) {
-        val pulse by rememberInfiniteTransition(label = "intro").animateFloat(
-            initialValue = 0.72f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "introAlpha"
-        )
+        val reveal by animateFloatAsState(1f, animationSpec = tween(1050, easing = FastOutSlowInEasing), label = "masterIntroReveal")
+        val motion = rememberInfiniteTransition(label = "masterIntroMotion")
+        val pulse by motion.animateFloat(0.88f, 1.08f, infiniteRepeatable(tween(1250), RepeatMode.Reverse), label = "masterIntroPulse")
+        val orbit by motion.animateFloat(0f, 360f, infiniteRepeatable(tween(9000)), label = "masterIntroOrbit")
         Box(
-            Modifier.fillMaxSize().background(Cm.Bg),
+            Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF02050D), Color(0xFF071A32), Color(0xFF030711)))),
             contentAlignment = Alignment.Center
         ) {
+            Box(
+                Modifier.size(340.dp).graphicsLayer { scaleX = pulse; scaleY = pulse; alpha = 0.55f }
+                    .background(Brush.radialGradient(listOf(Cm.Gold.copy(alpha = 0.24f), Color(0xFF1478B8).copy(alpha = 0.10f), Color.Transparent)), CircleShape)
+            )
+            Box(
+                Modifier.size(286.dp).graphicsLayer { rotationZ = orbit; scaleX = 0.78f + reveal * 0.22f; scaleY = 0.78f + reveal * 0.22f; alpha = reveal }
+                    .border(1.5.dp, Cm.Gold.copy(alpha = 0.75f), CircleShape)
+            )
+            Box(
+                Modifier.size(244.dp).graphicsLayer { rotationZ = -orbit * 0.72f; scaleX = 0.82f + reveal * 0.18f; scaleY = 0.82f + reveal * 0.18f; alpha = 0.55f + reveal * 0.35f }
+                    .border(1.dp, Color(0xFF4AB8FF).copy(alpha = 0.65f), CircleShape)
+            )
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Image(
                     painterResource(R.drawable.brand_logo), null,
-                    Modifier.size(132.dp).alpha(pulse).clip(RoundedCornerShape(28.dp))
-                        .border(2.dp, Cm.Gold, RoundedCornerShape(28.dp)),
+                    Modifier.size(156.dp).graphicsLayer {
+                        val entrance = 0.52f + reveal * 0.48f
+                        scaleX = entrance * pulse; scaleY = entrance * pulse
+                        rotationZ = (1f - reveal) * -16f; alpha = reveal
+                    }.clip(RoundedCornerShape(30.dp)).border(2.dp, Cm.Gold, RoundedCornerShape(30.dp)),
                     contentScale = ContentScale.Crop
                 )
-                Spacer(Modifier.height(20.dp))
-                Text("CÓDIGO MASTER TV", color = Cm.Text, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Tu entretenimiento está listo",
-                    color = Cm.Muted, fontSize = 13.sp
-                )
+                Spacer(Modifier.height(28.dp))
+                Text("CÓDIGO MASTER TV", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 2.4.sp,
+                    modifier = Modifier.graphicsLayer { translationY = (1f - reveal) * 24f; alpha = reveal })
+                Spacer(Modifier.height(9.dp))
+                Text("EL ENTRETENIMIENTO COBRA VIDA", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.1.sp,
+                    modifier = Modifier.graphicsLayer { translationY = (1f - reveal) * 18f; alpha = reveal })
+                Spacer(Modifier.height(30.dp))
+                LinearProgressIndicator(Modifier.width(142.dp).height(2.dp).graphicsLayer { alpha = reveal }, color = Cm.Gold, trackColor = Color.White.copy(alpha = 0.14f))
             }
         }
     }
