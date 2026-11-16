@@ -97,10 +97,17 @@ internal suspend fun loadClientStatus(accessToken: String, deviceKey: String, pl
         "POST", accessToken,
         JSONObject().put("action", "client_status").put("device_key", deviceKey).put("playlist_id", playlistId)
     )
+    // Una cuenta eliminada, vencida o suspendida debe permitir iniciar con otra.
+    // Un dispositivo bloqueado es distinto: conserva la sesión y permanece bloqueado,
+    // para impedir que el usuario evite la sanción cambiando de cuenta.
+    if (!status.optBoolean("account_active", false)) {
+        throw ClientSessionInvalidException("La cuenta fue eliminada, suspendida o venció. Inicia sesión con otra cuenta activa.")
+    }
+    if (!status.optBoolean("device_registered", false)) {
+        throw ClientSessionInvalidException("Este dispositivo ya no está vinculado a esta cuenta. Inicia sesión con otra cuenta.")
+    }
     val message = when {
-        !status.optBoolean("account_active", false) -> "Tu cuenta está suspendida o vencida. Contacta al administrador."
         status.optBoolean("global_suspended", false) -> status.optString("maintenance_message", "La aplicación está en mantenimiento.")
-        !status.optBoolean("device_registered", false) -> "Este dispositivo no está registrado. Vuelve a iniciar sesión."
         status.optBoolean("device_blocked", false) -> "Este dispositivo ha sido bloqueado por el administrador."+status.optString("device_blocked_reason").takeIf { it.isNotBlank() }?.let { "\nMotivo: $it" }.orEmpty()
         !status.optBoolean("playlist_active", true) -> "La lista que estás usando fue desactivada o suspendida por el administrador."
         else -> ""
