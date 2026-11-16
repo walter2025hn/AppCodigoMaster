@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07111f">
+<title>Código Master | Panel de Control</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,Arial,sans-serif;background:#07111f;color:#eef5ff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:22px;background:radial-gradient(circle at 50% 0,#15345b 0,#07111f 55%)}
+.card{width:min(100%,480px);padding:30px;background:#101e31;border:1px solid #294968;border-radius:22px;box-shadow:0 24px 80px #0008}
+.brand{font-size:12px;font-weight:900;letter-spacing:3px;color:#70bdff}.title{font-size:28px;margin:10px 0}.sub,.hint{color:#a9bdd3;line-height:1.55;font-size:14px}
+input,textarea{width:100%;margin-top:13px;padding:14px;border:1px solid #35516e;border-radius:12px;background:#081525;color:white;font:inherit}
+button{width:100%;margin-top:13px;padding:14px;border:0;border-radius:12px;font-weight:800;cursor:pointer;background:#2588e8;color:white}
+button.secondary{background:#263f5c}button.danger{background:#a93645}button.maintenance{background:#d08a25;color:#17120a}
+.status{margin:18px 0;padding:15px;border-radius:12px;background:#081525;border:1px solid #294968;line-height:1.5}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions button{margin:0}.hidden{display:none!important}.msg{min-height:24px;margin-top:14px;color:#ffd17a;font-size:13px;white-space:pre-wrap}.hint{font-size:12px}
+</style>
+</head>
+<body>
+<main class="card">
+<div class="brand">CÓDIGO MASTER</div>
+<h1 class="title">Panel de Control Maestro</h1>
+<p class="sub">Administra de forma remota el acceso a MasterCode TV.</p>
+<section id="login">
+<input id="email" type="email" placeholder="Correo Gmail del administrador" autocomplete="username">
+<input id="password" type="password" placeholder="Contraseña nueva del panel" autocomplete="current-password">
+<button id="loginBtn">Iniciar sesión</button>
+<p class="hint">Si todavía no tienes cuenta, créala con tu correo. Usa una contraseña exclusiva para este panel, no la de Google.</p>
+<button id="signupBtn" class="secondary">Crear cuenta</button>
+</section>
+<section id="dashboard" class="hidden">
+<div class="status" id="state">Consultando estado…</div>
+<div class="actions">
+<button id="activateBtn">ACTIVAR APP</button>
+<button id="suspendBtn" class="danger">SUSPENDER APP</button>
+</div>
+<textarea id="maintenance" rows="3" placeholder="Mensaje que verán los usuarios durante el mantenimiento"></textarea>
+<button id="maintenanceBtn" class="maintenance">ACTIVAR MODO MANTENIMIENTO</button>
+<button id="logoutBtn" class="secondary">Cerrar sesión</button>
+</section>
+<div id="msg" class="msg" role="status" aria-live="polite"></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL="https://drfzysksothwyyyzgkqe.supabase.co";
+const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZnp5c2tzb3Rod3l5eXpna3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3ODc4OTQsImV4cCI6MjExMDM2Mzg5NH0.jMkAgVVzlbDjWf4XF-2htsgxUYbf-sgK6JL635sYdvY";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const $=id=>document.getElementById(id);
+function message(value=""){$("msg").textContent=value}
+function visible(id,on){$(id).classList.toggle("hidden",!on)}
+async function refreshState(){
+ const {data,error}=await db.from("app_control").select("is_suspended,maintenance_message,updated_at").eq("id",true).single();
+ if(error) throw error;
+ $("state").textContent=data.is_suspended?"APP SUSPENDIDA · "+(data.maintenance_message||"Sin mensaje"):"APP ACTIVA · Se permite el acceso";
+ $("maintenance").value=data.maintenance_message||"";
+}
+async function refreshSession(){
+ const {data,error}=await db.auth.getSession();
+ if(error) message(error.message);
+ const logged=!!data.session;
+ visible("login",!logged);visible("dashboard",logged);
+ if(logged){try{await refreshState();message("")}catch(e){message("Sesión iniciada, pero esta cuenta aún no tiene permisos de administrador. "+e.message)}}
+}
+async function changeState(suspended,msg){
+ message("Guardando cambio…");
+ const {error}=await db.from("app_control").update({is_suspended:suspended,maintenance_message:msg,updated_at:new Date().toISOString()}).eq("id",true);
+ if(error){message("No se pudo aplicar: "+error.message);return}
+ await refreshState();message("Cambio guardado correctamente.");
+}
+$("loginBtn").onclick=async()=>{
+ message("Verificando cuenta…");
+ const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
+ if(error){message(error.message);return} await refreshSession();
+};
+$("signupBtn").onclick=async()=>{
+ const email=$("email").value.trim(),password=$("password").value;
+ if(!email||password.length<8){message("Escribe tu correo y una contraseña de al menos 8 caracteres.");return}
+ message("Creando cuenta…");
+ const {data,error}=await db.auth.signUp({email,password});
+ if(error){message(error.message);return}
+ message(data.session?"Cuenta creada. Avísame para habilitar los permisos de administrador.":"Cuenta creada. Revisa tu Gmail para confirmar el correo y luego avísame para habilitar los permisos.");
+};
+$("activateBtn").onclick=()=>changeState(false,"");
+$("suspendBtn").onclick=()=>changeState(true,"La aplicación está temporalmente suspendida por el administrador.");
+$("maintenanceBtn").onclick=()=>{
+ const msg=$("maintenance").value.trim();
+ if(!msg){message("Escribe primero el mensaje de mantenimiento.");return}
+ changeState(true,msg);
+};
+$("logoutBtn").onclick=async()=>{await db.auth.signOut();await refreshSession();message("Sesión cerrada.")};
+refreshSession();
+</script>
+</body>
+</html>
