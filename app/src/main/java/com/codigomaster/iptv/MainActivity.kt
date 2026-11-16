@@ -15,6 +15,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,6 +35,7 @@ import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.delay
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +81,7 @@ private fun CodigoMasterApp(store: Store) {
             var username by remember { mutableStateOf("") }
             var password by remember { mutableStateOf("") }
             Column(
-                Modifier.fillMaxSize().padding(28.dp),
+                Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -102,6 +105,7 @@ private fun CodigoMasterApp(store: Store) {
                 OutlinedTextField(
                     value = password, onValueChange = { password = it },
                     label = { Text("Contraseña") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()
                 )
                 Spacer(Modifier.height(12.dp))
@@ -124,7 +128,7 @@ private fun CodigoMasterApp(store: Store) {
                         }
                     },
                     enabled = !busy && username.isNotBlank() && password.isNotBlank(),
-                    modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()
+                    modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth().heightIn(min = 52.dp)
                 ) {
                     Text(if (busy) "VERIFICANDO CUENTA…" else "INICIAR SESIÓN")
                 }
