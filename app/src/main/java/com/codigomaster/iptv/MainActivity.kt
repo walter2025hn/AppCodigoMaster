@@ -149,9 +149,13 @@ private fun CodigoMasterApp(store: Store) {
                             accumulated.addAll(batch)
                             page++
                         }
-                        loadedEntriesCount = accumulated.size
-                        entries = accumulated.toList()
-                        message = "Actualizando catálogo · ${accumulated.size} de ${manifest.total}"
+                        // Persistir cada bloque descargado: si la app se cierra o pierde
+                        // conexión, el contenido ya recibido permanece guardado localmente.
+                        val snapshot = accumulated.distinctBy { it.url }
+                        withContext(Dispatchers.IO) { store.saveCache(snapshot) }
+                        loadedEntriesCount = snapshot.size
+                        entries = snapshot
+                        message = "Actualizando catálogo · ${snapshot.size} de ${manifest.total}"
 }
                     val complete = accumulated.distinctBy { it.url }
                     withContext(Dispatchers.IO) { store.saveCache(complete) }
