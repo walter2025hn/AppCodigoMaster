@@ -10,12 +10,14 @@ android {
 
     defaultConfig {
         applicationId = "com.codigomaster.iptv"
-        minSdk = 21
+        minSdk = 24
+        manifestPlaceholders["admobAppId"] = providers.gradleProperty("ADMOB_APP_ID")
+            .orElse("ca-app-pub-3940256099942544~3347511713").get()
         targetSdk = 35
         // libVLC incluye código nativo: solo las ABI de TV Box, Fire TV y móviles actuales.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
-        versionCode = 17
-        versionName = "4.8.0"
+        versionCode = 18
+        versionName = "4.9.0"
     }
 
     buildTypes {
@@ -36,6 +38,18 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     buildFeatures { compose = true; buildConfig = true }
+    buildTypes {
+        debug {
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-3940256099942544/9214589741\"")
+            buildConfigField("String", "ADMOB_NATIVE_ID", "\"ca-app-pub-3940256099942544/2247696110\"")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
+        }
+        release {
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"\${providers.gradleProperty("ADMOB_BANNER_ID").orElse("").get()}\"")
+            buildConfigField("String", "ADMOB_NATIVE_ID", "\"\${providers.gradleProperty("ADMOB_NATIVE_ID").orElse("").get()}\"")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"\${providers.gradleProperty("ADMOB_INTERSTITIAL_ID").orElse("").get()}\"")
+        }
+    }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
@@ -62,5 +76,10 @@ dependencies {
     implementation("org.videolan.android:libvlc-all:3.6.0")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // AdMob: banner, native, interstitial and consent.
+    implementation("com.google.android.gms:play-services-ads:25.5.0")
+    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
