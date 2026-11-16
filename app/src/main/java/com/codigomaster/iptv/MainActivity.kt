@@ -606,7 +606,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
 
     pendingAnnouncement?.let { notice ->
         AlertDialog(
-            onDismissRequest = { if (!notice.forceAck) pendingAnnouncement = null },
+            onDismissRequest = { if (!notice.forceAck) scope.launch { try { acknowledgeClientAnnouncement(accessToken, deviceKey, notice.id); pendingAnnouncement = null } catch (_: Exception) { } } },
             containerColor = Cm.SurfaceHi,
             titleContentColor = Cm.Text,
             textContentColor = Cm.Text,
@@ -620,7 +620,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                 }) { Text("ENTENDIDO", color = Cm.Gold, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                if (!notice.forceAck) TextButton(onClick = { pendingAnnouncement = null }) { Text("CERRAR", color = Cm.Muted) }
+                if (!notice.forceAck) TextButton(onClick = { scope.launch { try { acknowledgeClientAnnouncement(accessToken, deviceKey, notice.id); pendingAnnouncement = null } catch (_: Exception) { } } }) { Text("CERRAR", color = Cm.Muted) }
             }
         )
     }
