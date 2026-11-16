@@ -139,6 +139,9 @@ private fun CodigoMasterApp(store: Store) {
                 totalEntries = manifest.total
 
                 if (canCompare && changedPages.isEmpty()) {
+                    if (storedHashes.isEmpty()) {
+                        withContext(Dispatchers.IO) { store.savePageHashes(source.cacheKey, manifest.pageSha256) }
+                    }
                     entries = cached
                     loadedEntriesCount = cached.size
                     message = "Catálogo al día · no hay contenido nuevo"
