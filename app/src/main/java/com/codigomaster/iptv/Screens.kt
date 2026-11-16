@@ -530,6 +530,28 @@ fun SeriesDetail(
     }
 }
 
+
+@Composable
+private fun ColorSwatchRow(title: String, selected: String, colors: List<String>, onSelect: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(title, color = Cm.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+            colors.forEach { hex ->
+                val color = Cm.parse(hex, Color.White)
+                val active = selected.equals(hex, ignoreCase = true)
+                Box(
+                    Modifier.size(32.dp).clip(CircleShape).background(color)
+                        .then(if (active) Modifier.border(3.dp, Cm.Gold, CircleShape) else Modifier.border(1.dp, Cm.Outline, CircleShape))
+                        .clickable { onSelect(hex) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (active) Icon(Icons.Filled.Check, null, tint = if (color == Color.White) Color.Black else Color.White, modifier = Modifier.size(17.dp))
+                }
+            }
+        }
+    }
+}
+
 // ───────────────────────────── Ajustes ─────────────────────────────
 
 @Composable
@@ -577,6 +599,19 @@ fun SettingsDialog(
                 Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Text("PERSONALIZACIÓN DE COLORES", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Text("Cambia la apariencia de la app. Los colores se aplican al instante y se guardan en este dispositivo.", color = Cm.Muted, fontSize = 10.sp)
+                ColorSwatchRow("Fondo", store.backgroundColor, listOf("#FF05070D", "#FF101827", "#FF172033", "#FF20142E", "#FF10251F", "#FF2A1B12")) { store.backgroundColor = it; Cm.load(store) }
+                ColorSwatchRow("Textos", store.textColor, listOf("#FFF3F6FB", "#FFFFFFFF", "#FFD7E7FF", "#FFFFE4B5", "#FFB9FFD8", "#FFFFC9D5")) { store.textColor = it; Cm.load(store) }
+                ColorSwatchRow("Recuadros al seleccionar", store.selectionColor, listOf("#FF4DA3FF", "#FFFFC84A", "#FFFF4D6D", "#FF8B5CF6", "#FF22C55E", "#FF00BCD4")) { store.selectionColor = it; Cm.load(store) }
+                TextButton(onClick = {
+                    store.backgroundColor = "#FF05070D"
+                    store.textColor = "#FFF3F6FB"
+                    store.selectionColor = "#FF4DA3FF"
+                    Cm.load(store)
+                }) { Text("Restablecer colores originales", color = Cm.Gold, fontSize = 11.sp) }
+
+                Divider(color = Cm.Outline)
                 Text("MOTOR DE REPRODUCCIÓN", color = Cm.Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
                 listOf(
                     Triple("AUTO", "Automático (recomendado)", "ExoPlayer primero; si falla, cambia solo a VLC"),
