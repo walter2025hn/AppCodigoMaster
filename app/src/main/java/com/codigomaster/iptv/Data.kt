@@ -14,6 +14,11 @@ import java.util.zip.GZIPOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
+import android.util.Base64
 
 const val DEFAULT_PLAYLIST_URL =
     "https://raw.githubusercontent.com/walter2025hn/MiListaPremium/refs/heads/main/Completa.m3u"
@@ -59,6 +64,40 @@ class Store(context: Context) {
     var engine: String
         get() = prefs.getString("engine", "AUTO").orEmpty().ifBlank { "AUTO" }
         set(value) { prefs.edit().putString("engine", value).apply() }
+
+    /** Control parental: filtra categorías y títulos adultos del catálogo visible. */
+    var parentalProtectionEnabled: Boolean
+        get() = prefs.getBoolean("parental_enabled", false) && prefs.getString("parental_pin_hash", null) != null
+        set(value) { prefs.edit().putBoolean("parental_enabled", value && prefs.getString("parental_pin_hash", null) != null).apply() }
+
+    fun hasParentalPin(): Boolean = !prefs.getString("parental_pin_hash", null).isNullOrBlank()
+
+    fun setParentalPin(pin: String) {
+        require(pin.matches(Regex("""\d{4,6}"""))) { "El PIN debe tener entre 4 y 6 dígitos." }
+        val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val hash = derivePinHash(pin, salt)
+        prefs.edit()
+            .putString("parental_pin_salt", Base64.encodeToString(salt, Base64.NO_WRAP))
+            .putString("parental_pin_hash", Base64.encodeToString(hash, Base64.NO_WRAP))
+            .putBoolean("parental_enabled", true)
+            .apply()
+    }
+
+    fun verifyParentalPin(pin: String): Boolean {
+        val saltText = prefs.getString("parental_pin_salt", null) ?: return false
+        val hashText = prefs.getString("parental_pin_hash", null) ?: return false
+        return try {
+            val salt = Base64.decode(saltText, Base64.NO_WRAP)
+            val expected = Base64.decode(hashText, Base64.NO_WRAP)
+            MessageDigest.isEqual(expected, derivePinHash(pin, salt))
+        } catch (_: Exception) { false }
+    }
+
+    private fun derivePinHash(pin: String, salt: ByteArray): ByteArray {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, 120_000, 256)
+        return try { SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded }
+        finally { spec.clearPassword() }
+    }
 
     /** Clave gratuita de TMDB (opcional) para mostrar la calificación del público. */
     var tmdbKey: String
@@ -185,6 +224,30 @@ class Store(context: Context) {
         }
     }
 }
+
+private val ADULT_CONTENT_TERMS = listOf(
+    "18+", "+18", "xxx", "porn", "porno", "pornografia", "adult", "adultos",
+    "erotico", "erotica", "hentai", "onlyfans", "desnudo", "desnudos", "nude",
+    "nudity", "hardcore", "sex channel", "canal adulto", "canales adultos",
+    "contenido adulto", "mayores de 18", "solo adultos", "pay per view adult"
+)
+private val ADULT_WORD_REGEX = Regex("""(?i)(^|[^a-z0-9])(?:sex|sexual|sexy|hot|xxx)(?:$|[^a-z0-9])""")
+
+fun isAdultContent(name: String, group: String = "", metadata: String = ""): Boolean {
+    val raw = "$name $group $metadata".lowercase(Locale.ROOT)
+    val normalized = java.text.Normalizer.normalize(raw, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+    return ADULT_CONTENT_TERMS.any { normalized.contains(it) } || ADULT_WORD_REGEX.containsMatchIn(normalized)
+}
+
+fun Catalog.withoutAdultContent(): Catalog = Catalog(
+    live = live.filterNot { isAdultContent(it.name, it.group, it.attributes) },
+    movies = movies.filterNot { isAdultContent(it.name, it.group, it.attributes) },
+    series = series.filterNot { item ->
+        isAdultContent(item.title, item.group) ||
+            item.episodes.any { isAdultContent(it.name, it.group, it.attributes) }
+    }
+)
 
 fun groupCounts(items: List<Entry>, limit: Int = 60): List<Pair<String, Int>> =
     items.groupingBy { it.group }.eachCount().entries
