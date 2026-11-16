@@ -86,7 +86,11 @@ private fun CodigoMasterApp(store: Store) {
     var loginError by remember { mutableStateOf("") }
 
     if (accessToken.isNotBlank() && deviceKey.isNotBlank()) {
-        CodigoMasterHome(store, accessToken, deviceKey)
+        CodigoMasterHome(store, accessToken, deviceKey) {
+            store.clearSession()
+            accessToken = ""
+            deviceKey = ""
+        }
     } else {
         Surface(Modifier.fillMaxSize(), color = Cm.Bg) {
             var username by remember { mutableStateOf("") }
@@ -154,7 +158,7 @@ private fun CodigoMasterApp(store: Store) {
 }
 
 @Composable
-private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: String) {
+private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: String, onSessionInvalid: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val tv = remember(context) { isTelevision(context) }
@@ -404,6 +408,11 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                     wasBlocked = false
                 }
             } catch (e: Exception) {
+                if (e is ClientSessionInvalidException) {
+                    store.clearSession()
+                    onSessionInvalid()
+                    break
+                }
                 controlChecked = true
                 remoteError = true
                 remoteBlocked = true
