@@ -113,6 +113,21 @@ class Store(context: Context) {
         prefs.edit().remove("playlist").apply()
     }
 
+    fun savePageHashes(sourceUrl: String, hashes: List<String>) {
+        prefs.edit()
+            .putString("page_hashes_source", sourceUrl)
+            .putString("page_hashes", JSONArray(hashes).toString())
+            .apply()
+    }
+
+    fun readPageHashes(sourceUrl: String): List<String> {
+        if (prefs.getString("page_hashes_source", null) != sourceUrl) return emptyList()
+        return try {
+            val array = JSONArray(prefs.getString("page_hashes", "[]").orEmpty())
+            List(array.length()) { index -> array.getString(index) }
+        } catch (_: Exception) { emptyList() }
+    }
+
     fun readCache(): List<Entry> {
         return try {
         if (!cacheFile.exists()) {
