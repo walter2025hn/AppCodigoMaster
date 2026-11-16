@@ -609,7 +609,7 @@ fun SettingsDialog(
                                     val id = saveM3uPlaylist(accessToken, deviceKey, m3uName, url.trim())
                                     reloadPlaylists()
                                     store.selectedPlaylistId = id
-                                    store.playlistUrl = url.trim()
+                                    store.playlistUrl = ""
                                     playlistMessage = "Lista M3U guardada en tu cuenta."
                                     onSave()
                                 } catch (e: Exception) {
@@ -656,7 +656,7 @@ fun SettingsDialog(
                                     ?: listClientPlaylists(accessToken, deviceKey).first { it.id == id }
                                 val streamUrl = loadClientPlaylistUrl(accessToken, deviceKey, saved)
                                 store.selectedPlaylistId = id
-                                store.playlistUrl = streamUrl
+                                store.playlistUrl = ""
                                 playlistMessage = "Conexión Xtream guardada y seleccionada."
                                 xtreamPassword = ""
                                 onSave()
@@ -699,7 +699,7 @@ fun SettingsDialog(
                                         try {
                                             val streamUrl = loadClientPlaylistUrl(accessToken, deviceKey, item)
                                             store.selectedPlaylistId = item.id
-                                            store.playlistUrl = streamUrl
+                                            store.playlistUrl = ""
                                             playlistMessage = "Lista seleccionada."
                                             onSave()
                                         } catch (e: Exception) {
