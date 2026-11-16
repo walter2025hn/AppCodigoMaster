@@ -21,6 +21,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -61,6 +63,14 @@ fun DetailScreen(
     if (movie == null && series == null) return
     BackHandler { onBack() }
     val cfg = LocalConfiguration.current
+    val tv = LocalTv.current
+    val playFocus = remember(movie?.url, series?.key) { FocusRequester() }
+    LaunchedEffect(movie?.url, series?.key, tv) {
+        if (tv) {
+            kotlinx.coroutines.delay(180)
+            try { playFocus.requestFocus() } catch (_: IllegalStateException) { }
+        }
+    }
     val s = (cfg.screenHeightDp / 400f).coerceIn(0.72f, 1.2f)
 
     val key = movie?.url ?: series!!.key
@@ -172,7 +182,7 @@ fun DetailScreen(
                             // Vista previa (fondo + botón de reproducir)
                             Box(
                                 Modifier.weight(1f).aspectRatio(16f / 9f).border(1.dp, Color(0xFF2A2A2A))
-                                    .background(Color.Black).tvClickable(RoundedCornerShape(0.dp), 1.0f) { play(false) }
+                                    .background(Color.Black).then(if (tv) Modifier.focusRequester(playFocus) else Modifier).tvClickable(RoundedCornerShape(0.dp), 1.0f) { play(false) }
                             ) {
                                 val back = meta?.backdrop.orEmpty()
                                 val poster = meta?.poster.orEmpty()
