@@ -1,95 +1,46 @@
-<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#07111f">
-<title>Código Master | Panel de Control</title>
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#07111f"><title>Código Master · Panel</title>
 <style>
-:root{color-scheme:dark;font-family:Inter,system-ui,Arial,sans-serif;background:#07111f;color:#eef5ff}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:22px;background:radial-gradient(circle at 50% 0,#15345b 0,#07111f 55%)}
-.card{width:min(100%,480px);padding:30px;background:#101e31;border:1px solid #294968;border-radius:22px;box-shadow:0 24px 80px #0008}
-.brand{font-size:12px;font-weight:900;letter-spacing:3px;color:#70bdff}.title{font-size:28px;margin:10px 0}.sub,.hint{color:#a9bdd3;line-height:1.55;font-size:14px}
-input,textarea{width:100%;margin-top:13px;padding:14px;border:1px solid #35516e;border-radius:12px;background:#081525;color:white;font:inherit}
-button{width:100%;margin-top:13px;padding:14px;border:0;border-radius:12px;font-weight:800;cursor:pointer;background:#2588e8;color:white}
-button.secondary{background:#263f5c}button.danger{background:#a93645}button.maintenance{background:#d08a25;color:#17120a}
-.status{margin:18px 0;padding:15px;border-radius:12px;background:#081525;border:1px solid #294968;line-height:1.5}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions button{margin:0}.hidden{display:none!important}.msg{min-height:24px;margin-top:14px;color:#ffd17a;font-size:13px;white-space:pre-wrap}.hint{font-size:12px}
-</style>
-</head>
-<body>
-<main class="card">
-<div class="brand">CÓDIGO MASTER</div>
-<h1 class="title">Panel de Control Maestro</h1>
-<p class="sub">Administra de forma remota el acceso a MasterCode TV.</p>
-<section id="login">
-<input id="email" type="email" placeholder="Correo Gmail del administrador" autocomplete="username">
-<input id="password" type="password" placeholder="Contraseña nueva del panel" autocomplete="current-password">
-<button id="loginBtn">Iniciar sesión</button>
-<p class="hint">Si todavía no tienes cuenta, créala con tu correo. Usa una contraseña exclusiva para este panel, no la de Google.</p>
-<button id="signupBtn" class="secondary">Crear cuenta</button>
-</section>
-<section id="dashboard" class="hidden">
-<div class="status" id="state">Consultando estado…</div>
-<div class="actions">
-<button id="activateBtn">ACTIVAR APP</button>
-<button id="suspendBtn" class="danger">SUSPENDER APP</button>
-</div>
-<textarea id="maintenance" rows="3" placeholder="Mensaje que verán los usuarios durante el mantenimiento"></textarea>
-<button id="maintenanceBtn" class="maintenance">ACTIVAR MODO MANTENIMIENTO</button>
-<button id="logoutBtn" class="secondary">Cerrar sesión</button>
-</section>
-<div id="msg" class="msg" role="status" aria-live="polite"></div>
-</main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-const SUPABASE_URL="https://drfzysksothwyyyzgkqe.supabase.co";
-const SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZnp5c2tzb3Rod3l5eXpna3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3ODc4OTQsImV4cCI6MjExMDM2Mzg5NH0.jMkAgVVzlbDjWf4XF-2htsgxUYbf-sgK6JL635sYdvY";
-const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-const $=id=>document.getElementById(id);
-function message(value=""){$("msg").textContent=value}
-function visible(id,on){$(id).classList.toggle("hidden",!on)}
-async function refreshState(){
- const {data,error}=await db.from("app_control").select("is_suspended,maintenance_message,updated_at").eq("id",true).single();
- if(error) throw error;
- $("state").textContent=data.is_suspended?"APP SUSPENDIDA · "+(data.maintenance_message||"Sin mensaje"):"APP ACTIVA · Se permite el acceso";
- $("maintenance").value=data.maintenance_message||"";
-}
-async function refreshSession(){
- const {data,error}=await db.auth.getSession();
- if(error) message(error.message);
- const logged=!!data.session;
- visible("login",!logged);visible("dashboard",logged);
- if(logged){try{await refreshState();message("")}catch(e){message("Sesión iniciada, pero esta cuenta aún no tiene permisos de administrador. "+e.message)}}
-}
-async function changeState(suspended,msg){
- message("Guardando cambio…");
- const {error}=await db.from("app_control").update({is_suspended:suspended,maintenance_message:msg,updated_at:new Date().toISOString()}).eq("id",true);
- if(error){message("No se pudo aplicar: "+error.message);return}
- await refreshState();message("Cambio guardado correctamente.");
-}
-$("loginBtn").onclick=async()=>{
- message("Verificando cuenta…");
- const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
- if(error){message(error.message);return} await refreshSession();
-};
-$("signupBtn").onclick=async()=>{
- const email=$("email").value.trim(),password=$("password").value;
- if(!email||password.length<8){message("Escribe tu correo y una contraseña de al menos 8 caracteres.");return}
- message("Creando cuenta…");
- const {data,error}=await db.auth.signUp({email,password});
- if(error){message(error.message);return}
- message(data.session?"Cuenta creada. Avísame para habilitar los permisos de administrador.":"Cuenta creada. Revisa tu Gmail para confirmar el correo y luego avísame para habilitar los permisos.");
-};
-$("activateBtn").onclick=()=>changeState(false,"");
-$("suspendBtn").onclick=()=>changeState(true,"La aplicación está temporalmente suspendida por el administrador.");
-$("maintenanceBtn").onclick=()=>{
- const msg=$("maintenance").value.trim();
- if(!msg){message("Escribe primero el mensaje de mantenimiento.");return}
- changeState(true,msg);
-};
-$("logoutBtn").onclick=async()=>{await db.auth.signOut();await refreshSession();message("Sesión cerrada.")};
-refreshSession();
-</script>
-</body>
-</html>
+:root{color-scheme:dark;font-family:Inter,system-ui,Arial;background:#07111f;color:#eef5ff}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 70% 0,#15345b,#07111f 55%)}button,input,select,textarea{font:inherit}button{border:0;border-radius:10px;padding:10px 13px;background:#2588e8;color:white;font-weight:750;cursor:pointer}.secondary{background:#29415c}.danger{background:#a93645}.success{background:#16794c}.warn{background:#b77a22;color:#160f05}.small{padding:7px 9px;font-size:12px}.hidden{display:none!important}.wrap{width:min(1200px,100%);margin:auto;padding:22px}.card{background:#101e31;border:1px solid #294968;border-radius:17px;padding:18px;box-shadow:0 15px 45px #0004}.login{max-width:430px;margin:10vh auto}.brand{color:#70bdff;font-size:12px;font-weight:900;letter-spacing:3px}.title{font-size:26px;margin:8px 0}.muted{color:#a9bdd3;font-size:13px;line-height:1.5}input,select,textarea{width:100%;padding:11px;border:1px solid #35516e;border-radius:10px;background:#081525;color:white;margin:5px 0 11px}label{display:block;font-size:12px;color:#b8cce0;margin-top:6px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.top,.panelhead{display:flex;justify-content:space-between;align-items:center;gap:12px}.tabs,.actions{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}.tabs button{background:#1b3049}.tabs button.active{background:#2588e8}.stat{background:#081525;border:1px solid #294968;border-radius:11px;padding:13px}.stat b{display:block;font-size:22px;margin-top:5px}.section{margin-top:15px}.tablewrap{overflow:auto;margin-top:12px}table{width:100%;border-collapse:collapse;min-width:720px;font-size:13px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #29415c;vertical-align:middle}th{color:#9fc9ed;font-size:11px;text-transform:uppercase}.msg{min-height:20px;color:#ffd17a;font-size:13px;white-space:pre-wrap;margin-top:10px}.pill{display:inline-block;padding:4px 8px;border-radius:20px;background:#203a56;font-size:11px}.good{background:#14533d}.bad{background:#5b2631}@media(max-width:760px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.two{grid-template-columns:1fr}.wrap{padding:12px}.top{align-items:flex-start;flex-direction:column}}
+</style></head><body><main class="wrap">
+<section id="login" class="card login"><div class="brand">CÓDIGO MASTER</div><h1 class="title">Panel de Control Maestro</h1><p class="muted">Acceso exclusivo del administrador. Las cuentas de clientes se crean aquí.</p><label>Correo administrador</label><input id="email" type="email" autocomplete="username"><label>Contraseña</label><input id="password" type="password" autocomplete="current-password"><button id="loginBtn" style="width:100%">Iniciar sesión</button><div id="loginMsg" class="msg"></div></section>
+<section id="app" class="hidden">
+<header class="top"><div><div class="brand">CÓDIGO MASTER</div><h1 class="title">Administración MasterCode TV</h1><div class="muted">Clientes · dispositivos · listas personales · control general</div></div><button id="logout" class="secondary">Cerrar sesión</button></header>
+<div class="grid"><div class="stat">Clientes<b id="statClients">0</b></div><div class="stat">Dispositivos<b id="statDevices">0</b></div><div class="stat">Listas guardadas<b id="statLists">0</b></div><div class="stat">Control global<b id="statGlobal">—</b></div></div>
+<nav class="tabs"><button class="active" data-tab="clients">Clientes</button><button data-tab="devices">Dispositivos</button><button data-tab="playlists">Listas M3U / Xtream</button><button data-tab="global">Control general</button></nav>
+<section id="tab-clients" class="card section"><div class="panelhead"><div><h2>Crear cliente</h2><p class="muted">Usuario, contraseña, vencimiento o demo y límite de dispositivos.</p></div><button id="reloadClients" class="secondary small">Actualizar</button></div>
+<div class="grid"><div><label>Usuario</label><input id="newUser" placeholder="cliente01"></div><div><label>Contraseña (mínimo 8)</label><input id="newPass" type="password"></div><div><label>Máximo dispositivos</label><input id="maxDevices" type="number" min="1" max="100" value="1"></div><div><label>Vencimiento (si no es demo)</label><input id="expires" type="datetime-local"></div></div>
+<div class="two"><div><label>Demo temporal (opcional)</label><div class="two"><input id="demoValue" type="number" min="1" placeholder="Duración"><select id="demoUnit"><option value="hours">Horas</option><option value="minutes">Minutos</option><option value="days">Días</option></select></div></div><div><label>Catálogo general</label><select id="contentEnabled"><option value="false">Desactivado</option><option value="true">Activado</option></select></div></div><button id="createClient">CREAR CUENTA</button><div id="clientMsg" class="msg"></div>
+<h2>Cuentas registradas</h2><div class="tablewrap"><table><thead><tr><th>Usuario</th><th>Estado</th><th>Vence</th><th>Catálogo</th><th>Dispositivos</th><th>Acciones</th></tr></thead><tbody id="clientsBody"></tbody></table></div></section>
+<section id="tab-devices" class="card section hidden"><div class="panelhead"><div><h2>Dispositivos registrados</h2><p class="muted">Bloquear no libera el cupo; eliminar sí lo libera.</p></div><button id="reloadDevices" class="secondary small">Actualizar</button></div><div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Dispositivo</th><th>Modelo</th><th>Android / App</th><th>Última actividad</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="devicesBody"></tbody></table></div></section>
+<section id="tab-playlists" class="card section hidden"><div class="panelhead"><div><h2>Listas y conexiones</h2><p class="muted">Activar, suspender o eliminar fuentes.</p></div><button id="reloadPlaylists" class="secondary small">Actualizar</button></div><div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Nombre</th><th>Tipo</th><th>Servidor / URL</th><th>Usuario Xtream</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="playlistsBody"></tbody></table></div></section>
+<section id="tab-global" class="card section hidden"><h2>Control general de la aplicación</h2><p class="muted">Este control afecta a todos los clientes.</p><div id="globalState" class="stat">Consultando…</div><label>Mensaje de suspensión / mantenimiento</label><textarea id="globalMessage" rows="3"></textarea><div class="actions"><button id="globalActivate" class="success">ACTIVAR APP</button><button id="globalSuspend" class="danger">SUSPENDER APP</button><button id="globalMaintenance" class="warn">MANTENIMIENTO</button></div></section><div id="appMsg" class="msg"></div>
+</section></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
+const SUPABASE_URL="https://drfzysksothwyyyzgkqe.supabase.co",SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZnp5c2tzb3Rod3l5eXpna3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3ODc4OTQsImV4cCI6MjExMDM2Mzg5NH0.jMkAgVVzlbDjWf4XF-2htsgxUYbf-sgK6JL635sYdvY";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY),$=id=>document.getElementById(id);let clients=[],devices=[],playlists=[];
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const say=(id,v)=>$(id).textContent=v||"";
+async function api(action,extra={}){const {data:{session}}=await db.auth.getSession();if(!session)throw Error("Sesión vencida.");const r=await fetch(SUPABASE_URL+"/functions/v1/master-control",{method:"POST",headers:{"Content-Type":"application/json","apikey":SUPABASE_ANON_KEY,"Authorization":"Bearer "+session.access_token},body:JSON.stringify({action,...extra})});const j=await r.json();if(!r.ok||j.ok===false)throw Error(j.error||j.reason||"Error de operación.");return j}
+function show(on){$("login").classList.toggle("hidden",on);$("app").classList.toggle("hidden",!on)}
+async function loadAll(){await Promise.all([loadClients(),loadDevices(),loadPlaylists(),loadGlobal()])}
+async function loadClients(){const r=await api("admin_list_clients");clients=r.clients||[];$("statClients").textContent=clients.length;$("clientsBody").innerHTML=clients.map(c=>{const active=c.account_enabled&&new Date(c.expires_at)>new Date();return `<tr><td><b>${esc(c.username)}</b>${c.is_demo?' <span class="pill">DEMO</span>':''}</td><td><span class="pill ${active?'good':'bad'}">${active?'ACTIVA':'SUSPENDIDA / VENCIDA'}</span></td><td>${new Date(c.expires_at).toLocaleString()}</td><td>${c.content_enabled?'Activado':'Desactivado'}</td><td>${c.device_count} / ${c.max_devices}</td><td><button class="small ${c.account_enabled?'danger':'success'}" onclick="toggleClient('${c.user_id}',${!c.account_enabled})">${c.account_enabled?'Suspender':'Activar'}</button> <button class="small secondary" onclick="editClient('${c.user_id}')">Editar</button> <button class="small danger" onclick="deleteClient('${c.user_id}')">Eliminar</button></td></tr>`}).join("")||'<tr><td colspan="6">Sin clientes todavía.</td></tr>'}
+async function loadDevices(){const r=await api("admin_list_devices");devices=r.devices||[];$("statDevices").textContent=devices.length;$("devicesBody").innerHTML=devices.map(d=>`<tr><td>${esc(d.username)}</td><td>${esc(d.device_name)}</td><td>${esc(d.model)}</td><td>${esc(d.android_version)} / ${esc(d.app_version)}</td><td>${d.last_seen_at?new Date(d.last_seen_at).toLocaleString():'—'}</td><td>${d.is_blocked?'BLOQUEADO':'ACTIVO'}</td><td><button class="small ${d.is_blocked?'success':'danger'}" onclick="blockDevice('${d.id}',${!d.is_blocked})">${d.is_blocked?'Desbloquear':'Bloquear'}</button> <button class="small secondary" onclick="removeDevice('${d.id}')">Liberar cupo</button></td></tr>`).join("")||'<tr><td colspan="7">Sin dispositivos.</td></tr>'}
+async function loadPlaylists(){const r=await api("admin_list_playlists");playlists=r.playlists||[];$("statLists").textContent=playlists.length;$("playlistsBody").innerHTML=playlists.map(p=>`<tr><td>${esc(p.username)}</td><td>${esc(p.playlist_name)}</td><td>${p.source_type==='xtream'?'Xtream':'M3U'}</td><td>${esc(p.server_url||p.m3u_url)}</td><td>${esc(p.xtream_username||'—')}</td><td>${p.is_suspended?'SUSPENDIDA':p.is_enabled?'ACTIVA':'DESACTIVADA'}</td><td><button class="small secondary" onclick="togglePlaylist('${p.id}',{is_enabled:${!p.is_enabled}})">${p.is_enabled?'Desactivar':'Activar'}</button> <button class="small warn" onclick="togglePlaylist('${p.id}',{is_suspended:${!p.is_suspended}})">${p.is_suspended?'Reactivar':'Suspender'}</button> ${p.source_type==='xtream'?'<button class="small secondary" onclick="revealPassword(\''+p.id+'\')">Ver clave</button>':''} <button class="small danger" onclick="removePlaylist('${p.id}')">Eliminar</button></td></tr>`).join("")||'<tr><td colspan="7">No hay listas.</td></tr>'}
+async function loadGlobal(){const {data,error}=await db.from("app_control").select("is_suspended,maintenance_message").eq("id",true).single();if(error)throw error;$("statGlobal").textContent=data.is_suspended?'SUSPENDIDA':'ACTIVA';$("globalState").textContent=data.is_suspended?'APLICACIÓN SUSPENDIDA':'APLICACIÓN ACTIVA';$("globalMessage").value=data.maintenance_message||""}
+$("loginBtn").onclick=async()=>{say("loginMsg","Validando…");const {error}=await db.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});if(error){say("loginMsg",error.message);return}try{show(true);await loadAll();say("loginMsg","")}catch(e){say("loginMsg",e.message);show(false)}};
+$("logout").onclick=async()=>{await db.auth.signOut();show(false)};
+$("createClient").onclick=async()=>{try{say("clientMsg","Creando cuenta…");const p={username:$("newUser").value.trim(),password:$("newPass").value,max_devices:Number($("maxDevices").value),content_enabled:$("contentEnabled").value==="true"};if($("demoValue").value){p.demo_value=Number($("demoValue").value);p.demo_unit=$("demoUnit").value}else{if(!$("expires").value)throw Error("Indica vencimiento o duración demo.");p.expires_at=new Date($("expires").value).toISOString()}const r=await api("admin_create_client",p);say("clientMsg","Cuenta "+r.username+" creada.");$("newUser").value="";$("newPass").value="";$("demoValue").value="";await loadClients()}catch(e){say("clientMsg",e.message)}};
+window.toggleClient=async(id,on)=>{try{await api("admin_update_client",{user_id:id,account_enabled:on});await loadClients()}catch(e){alert(e.message)}};
+window.editClient=async id=>{const c=clients.find(x=>x.user_id===id);const n=prompt("Límite de dispositivos",c.max_devices);if(n===null)return;const exp=prompt("Vencimiento ISO (2027-01-01T00:00:00Z)",c.expires_at);if(exp===null)return;const content=confirm("¿Activar catálogo general?");try{await api("admin_update_client",{user_id:id,max_devices:Number(n),expires_at:exp,content_enabled:content});await loadClients()}catch(e){alert(e.message)}};
+window.deleteClient=async id=>{if(!confirm("¿Eliminar esta cuenta y sus datos?"))return;try{await api("admin_delete_client",{user_id:id});await loadAll()}catch(e){alert(e.message)}};
+window.blockDevice=async(id,on)=>{try{await api("admin_update_device",{device_id:id,is_blocked:on});await loadDevices()}catch(e){alert(e.message)}};
+window.removeDevice=async id=>{if(!confirm("¿Eliminar y liberar este cupo?"))return;try{await api("admin_delete_device",{device_id:id});await loadDevices();await loadClients()}catch(e){alert(e.message)}};
+window.togglePlaylist=async(id,patch)=>{try{await api("admin_update_playlist",{playlist_id:id,...patch});await loadPlaylists()}catch(e){alert(e.message)}};
+window.removePlaylist=async id=>{if(!confirm("¿Eliminar esta lista?"))return;try{await api("admin_delete_playlist",{playlist_id:id});await loadPlaylists()}catch(e){alert(e.message)}};
+window.revealPassword=async id=>{try{const r=await api("admin_reveal_xtream_password",{playlist_id:id});alert("Contraseña Xtream:\n"+r.password)}catch(e){alert(e.message)}};
+["Clients","Devices","Playlists"].forEach(x=>$("reload"+x).onclick=()=>({"Clients":loadClients,"Devices":loadDevices,"Playlists":loadPlaylists}[x]()).catch(e=>say("appMsg",e.message)));
+async function globalChange(suspended,msg){try{await api("admin_global_control",{is_suspended:suspended,maintenance_message:msg});await loadGlobal();say("appMsg","Control actualizado.")}catch(e){say("appMsg",e.message)}}
+$("globalActivate").onclick=()=>globalChange(false,"");$("globalSuspend").onclick=()=>globalChange(true,$("globalMessage").value||"Aplicación suspendida por el administrador.");$("globalMaintenance").onclick=()=>{if(!$("globalMessage").value.trim())return say("appMsg","Escribe el mensaje.");globalChange(true,$("globalMessage").value.trim())};
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));["clients","devices","playlists","global"].forEach(t=>$("tab-"+t).classList.toggle("hidden",t!==b.dataset.tab))});
+(async()=>{const {data}=await db.auth.getSession();if(data.session){try{show(true);await loadAll()}catch(e){show(false);say("loginMsg",e.message)}}})();
+</script></body></html>
