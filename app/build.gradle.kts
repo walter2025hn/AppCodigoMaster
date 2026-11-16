@@ -21,16 +21,23 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-3940256099942544/9214589741\"")
+            buildConfigField("String", "ADMOB_NATIVE_ID", "\"ca-app-pub-3940256099942544/2247696110\"")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
+        }
         release {
-            // El APK "debug" de Compose es MUY lento (sin optimizar). Release + R8 = desplazamiento fluido.
+            // El APK release se optimiza con R8 y conserva la firma debug actual del proyecto.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Se firma con la clave de depuración para poder instalarlo (sideload) sin crear un keystore.
             signingConfig = signingConfigs.getByName("debug")
+            // Sin secretos de AdMob, release no solicita anuncios.
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"${providers.gradleProperty("ADMOB_BANNER_ID").orElse("").get()}\"")
+            buildConfigField("String", "ADMOB_NATIVE_ID", "\"${providers.gradleProperty("ADMOB_NATIVE_ID").orElse("").get()}\"")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"${providers.gradleProperty("ADMOB_INTERSTITIAL_ID").orElse("").get()}\"")
         }
     }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
