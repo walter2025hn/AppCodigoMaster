@@ -107,11 +107,20 @@ private fun CodigoMasterApp(store: Store) {
                 val source = PagedCatalogSource()
                 val manifest = withContext(Dispatchers.IO) { source.loadManifest() }
                 val cached = withContext(Dispatchers.IO) { store.readCache() }
-                val previousHashes = withContext(Dispatchers.IO) { store.readPageHashes(source.cacheKey) }
+                val storedHashes = withContext(Dispatchers.IO) { store.readPageHashes(source.cacheKey) }
                 val cachedPages = cached.chunked(manifest.pageSize)
+                // Si esta instalación ya tenía el catálogo completo de la versión anterior,
+                // calculamos sus huellas localmente para evitar volver a bajar los 256 mil elementos.
+                val previousHashes = if (storedHashes.isNotEmpty()) storedHashes else if (
+                    cached.isNotEmpty() &&
+                    cached.size == manifest.total &&
+                    cachedPages.size == manifest.pageCount &&
+                    manifest.pageSha256.size == manifest.pageCount
+                ) {
+                    cachedPages.map { pageFingerprint(it) }
+                } else emptyList()
 
-                // Solo se puede sincronizar por diferencias cuando tenemos una copia completa
-                // y las huellas de todas sus páginas. Si no, se realiza una descarga inicial segura.
+                // Solo se sincronizan diferencias cuando existe una copia completa verificable.
                 val canCompare = cached.isNotEmpty() &&
                     previousHashes.isNotEmpty() &&
                     cachedPages.size == previousHashes.size &&
