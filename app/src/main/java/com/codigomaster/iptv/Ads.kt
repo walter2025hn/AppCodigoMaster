@@ -118,7 +118,7 @@ internal fun BannerAd(modifier: Modifier = Modifier) {
             adUnitId = unitId
             val density = resources.displayMetrics.density
             val widthDp = (resources.displayMetrics.widthPixels / density).toInt().coerceAtLeast(320)
-            setAdSize(AdSize.getLargeAnchoredAdaptiveBannerAdSize(context, widthDp))
+            setAdSize(AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, widthDp))
             loadAd(AdRequest.Builder().build())
         }
     }
