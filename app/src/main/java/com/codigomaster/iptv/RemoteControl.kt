@@ -99,3 +99,91 @@ internal suspend fun loadClientStatus(accessToken: String, deviceKey: String): R
     }
     RemoteAppControl(message.isNotBlank(), message, status.optBoolean("content_enabled", true))
 }
+
+internal data class ClientPlaylist(
+    val id: String,
+    val name: String,
+    val sourceType: String,
+    val serverUrl: String,
+    val username: String,
+    val m3uUrl: String,
+    val isEnabled: Boolean,
+    val isSuspended: Boolean
+)
+
+internal suspend fun listClientPlaylists(accessToken: String, deviceKey: String): List<ClientPlaylist> = withContext(Dispatchers.IO) {
+    val response = requestJson(
+        "$CM_SUPABASE_URL/functions/v1/master-control", "POST", accessToken,
+        JSONObject().put("action", "client_list_playlists").put("device_key", deviceKey)
+    )
+    val rows = response.optJSONArray("playlists") ?: return@withContext emptyList()
+    buildList {
+        for (i in 0 until rows.length()) {
+            val row = rows.getJSONObject(i)
+            add(ClientPlaylist(
+                id = row.optString("id"),
+                name = row.optString("playlist_name"),
+                sourceType = row.optString("source_type"),
+                serverUrl = row.optString("server_url"),
+                username = row.optString("xtream_username"),
+                m3uUrl = row.optString("m3u_url"),
+                isEnabled = row.optBoolean("is_enabled", true),
+                isSuspended = row.optBoolean("is_suspended", false)
+            ))
+        }
+    }
+}
+
+internal suspend fun saveM3uPlaylist(accessToken: String, deviceKey: String, name: String, m3uUrl: String): String = withContext(Dispatchers.IO) {
+    val response = requestJson(
+        "$CM_SUPABASE_URL/functions/v1/master-control", "POST", accessToken,
+        JSONObject().put("action", "client_save_playlist")
+            .put("device_key", deviceKey)
+            .put("playlist_name", name)
+            .put("source_type", "m3u_url")
+            .put("server_url", m3uUrl)
+            .put("m3u_url", m3uUrl)
+    )
+    response.optJSONObject("playlist")?.optString("id").orEmpty()
+}
+
+internal suspend fun saveXtreamPlaylist(
+    accessToken: String, deviceKey: String, name: String, server: String, username: String, password: String
+): String = withContext(Dispatchers.IO) {
+    val response = requestJson(
+        "$CM_SUPABASE_URL/functions/v1/master-control", "POST", accessToken,
+        JSONObject().put("action", "client_save_playlist")
+            .put("device_key", deviceKey)
+            .put("playlist_name", name)
+            .put("source_type", "xtream")
+            .put("server_url", server.trim().trimEnd('/'))
+            .put("xtream_username", username.trim())
+            .put("password", password)
+    )
+    response.optJSONObject("playlist")?.optString("id").orEmpty()
+}
+
+internal suspend fun loadClientPlaylistUrl(accessToken: String, deviceKey: String, playlist: ClientPlaylist): String = withContext(Dispatchers.IO) {
+    when (playlist.sourceType) {
+        "m3u_url" -> {
+            val response = requestJson(
+                "$CM_SUPABASE_URL/functions/v1/master-control", "POST", accessToken,
+                JSONObject().put("action", "client_get_m3u_url")
+                    .put("device_key", deviceKey).put("playlist_id", playlist.id)
+            )
+            response.optString("m3u_url")
+        }
+        "xtream" -> {
+            val response = requestJson(
+                "$CM_SUPABASE_URL/functions/v1/master-control", "POST", accessToken,
+                JSONObject().put("action", "client_get_xtream_credentials")
+                    .put("device_key", deviceKey).put("playlist_id", playlist.id)
+            )
+            val base = response.optString("server_url").trimEnd('/')
+            val user = java.net.URLEncoder.encode(response.optString("username"), "UTF-8")
+            val pass = java.net.URLEncoder.encode(response.optString("password"), "UTF-8")
+            "$base/get.php?username=$user&password=$pass&type=m3u_plus&output=ts"
+        }
+        else -> throw IllegalStateException("Tipo de lista no compatible.")
+    }
+}
