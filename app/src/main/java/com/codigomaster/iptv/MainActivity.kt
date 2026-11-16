@@ -370,7 +370,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
         var previousContentEnabled: Boolean? = null
         while (true) {
             try {
-                val control = loadClientStatus(accessToken, deviceKey, store.selectedPlaylistId)
+                val control = loadClientStatus(context, accessToken, deviceKey, store.selectedPlaylistId)
                 controlChecked = true
                 remoteError = false
                 remoteBlocked = control.isSuspended
