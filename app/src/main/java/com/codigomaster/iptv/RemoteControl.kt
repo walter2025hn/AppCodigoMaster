@@ -69,7 +69,7 @@ internal suspend fun loginClient(context: Context, username: String, password: S
             .put("device_name", (Build.MANUFACTURER + " " + Build.MODEL).trim())
             .put("model", Build.MODEL)
             .put("android_version", Build.VERSION.RELEASE ?: "")
-            .put("app_version", "4.6.0")
+            .put("app_version", "4.7.0")
     )
     if (!registered.optBoolean("ok", false)) {
         val reason = registered.optString("reason")
@@ -99,6 +99,57 @@ internal suspend fun loadClientStatus(accessToken: String, deviceKey: String, pl
         else -> ""
     }
     RemoteAppControl(message.isNotBlank(), message, status.optBoolean("content_enabled", true))
+}
+
+
+internal data class CatalogOverride(
+    val sourceKey: String, val itemType: String, val itemName: String, val itemUrl: String,
+    val itemGroup: String, val itemLogo: String, val tvgId: String, val attributes: String,
+    val section: String, val isHidden: Boolean, val isManual: Boolean
+)
+
+internal suspend fun loadClientCatalogOverrides(accessToken: String, deviceKey: String): List<CatalogOverride> = withContext(Dispatchers.IO) {
+    val response = requestJson(
+        "$CM_SUPABASE_URL/functions/v1/master-control", "POST", accessToken,
+        JSONObject().put("action", "client_catalog_overrides").put("device_key", deviceKey)
+    )
+    val rows = response.optJSONArray("items") ?: return@withContext emptyList()
+    buildList {
+        for (i in 0 until rows.length()) {
+            val row = rows.getJSONObject(i)
+            add(CatalogOverride(
+                sourceKey = row.optString("source_key"),
+                itemType = row.optString("item_type"),
+                itemName = row.optString("item_name"),
+                itemUrl = row.optString("item_url"),
+                itemGroup = row.optString("item_group", "Sin categoría"),
+                itemLogo = row.optString("item_logo"),
+                tvgId = row.optString("tvg_id"),
+                attributes = row.optString("attributes"),
+                section = row.optString("section"),
+                isHidden = row.optBoolean("is_hidden", false),
+                isManual = row.optBoolean("is_manual", false)
+            ))
+        }
+    }
+}
+
+internal fun applyCatalogOverrides(base: List<Entry>, overrides: List<CatalogOverride>): List<Entry> {
+    val byKey = overrides.filterNot { it.isManual }.associateBy { it.sourceKey }
+    val result = ArrayList<Entry>(base.size + overrides.count { it.isManual && !it.isHidden })
+    for (entry in base) {
+        val override = byKey[entry.url]
+        if (override == null) result.add(entry)
+        else if (!override.isHidden) result.add(entry.copy(
+            name = override.itemName, url = override.itemUrl, group = override.itemGroup,
+            logo = override.itemLogo, tvgId = override.tvgId, attributes = override.attributes,
+            section = override.section
+        ))
+    }
+    overrides.filter { it.isManual && !it.isHidden }.forEach { item ->
+        result.add(Entry(item.itemName, item.itemUrl, item.itemGroup, item.itemLogo, item.tvgId, item.attributes, item.section))
+    }
+    return result.distinctBy { it.url }
 }
 
 internal data class ClientPlaylist(
