@@ -67,7 +67,7 @@
 </section></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
 const SUPABASE_URL="https://drfzysksothwyyyzgkqe.supabase.co",SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZnp5c2tzb3Rod3l5eXpna3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3ODc4OTQsImV4cCI6MjExMDM2Mzg5NH0.jMkAgVVzlbDjWf4XF-2htsgxUYbf-sgK6JL635sYdvY";
-const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY),$=id=>document.getElementById(id);let clients=[],devices=[],playlists=[],panelIdentity=null,catalogIndex=null,catalogType="movies",catalogPageNo=1,catalogItems=[],catalogOverrides=[],catalogShown=[],catalogSearchMode=false;
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY),$=id=>document.getElementById(id);let clients=[],devices=[],playlists=[],panelIdentity=null,catalogIndex=null,catalogType="movies",catalogPageNo=1,catalogItems=[],catalogOverrides=[],catalogShown=[],catalogSearchMode=false;let catalogSearchRunId=0;
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const say=(id,v)=>$(id).textContent=v||"";
 async function api(action,extra={}){const {data:{session}}=await db.auth.getSession();if(!session)throw Error("Sesión vencida.");const r=await fetch(SUPABASE_URL+"/functions/v1/master-control",{method:"POST",headers:{"Content-Type":"application/json","apikey":SUPABASE_ANON_KEY,"Authorization":"Bearer "+session.access_token},body:JSON.stringify({action,...extra})});const j=await r.json();if(!r.ok||j.ok===false)throw Error(j.error||j.reason||"Error de operación.");return j}
@@ -131,12 +131,46 @@ function renderCatalog(){
  $("catalogPage").textContent=catalogSearchMode?"Búsqueda general":"Página "+catalogPageNo+" / "+(meta.page_count||0);$("catalogPrev").disabled=catalogSearchMode||catalogPageNo<=1;$("catalogNext").disabled=catalogSearchMode||catalogPageNo>=meta.page_count;renderCatalogOverridesList();
 }
 async function searchWholeCatalog(){
- const term=$("catalogSearch").value.trim().toLowerCase();if(term.length<2){catalogSearchMode=false;loadCatalogPage(1).catch(e=>say("catalogMsg",e.message));return}if(!catalogIndex)return;
- try{$("searchCatalogAll").disabled=true;$("catalogGroup").value="";catalogSearchMode=true;catalogItems=[];say("catalogMsg","Buscando en películas, series y canales…");
- const types=["movies","series","live"],tasks=[];for(const type of types){const pages=Number(catalogIndex.categories?.[type]?.page_count||0);for(let p=1;p<=pages;p++)tasks.push({type,p})}
- const found=[];let next=0,done=0;const workers=Array.from({length:12},async()=>{while(next<tasks.length){const task=tasks[next++];try{const url=GHRAW+"catalog_pages/"+task.type+"/page-"+String(task.p).padStart(6,"0")+".json",r=await fetch(url);if(r.ok){const rows=await r.json();for(const x of rows)if((String(x.name||"")+" "+String(x.group||"")).toLowerCase().includes(term))found.push({...x,_type:task.type})}}catch{}done++;if(done%30===0)say("catalogMsg","Revisando "+done+" / "+tasks.length+" páginas · "+found.length+" resultados")}});await Promise.all(workers);
- catalogItems=found;catalogType="movies";document.querySelectorAll("[data-catalog]").forEach(b=>b.classList.remove("active"));renderCatalog();say("catalogMsg","Búsqueda general terminada: "+found.length+" resultados.");
- }catch(e){say("catalogMsg","Error al buscar: "+e.message)}finally{$("searchCatalogAll").disabled=false}
+ const runId=++catalogSearchRunId,term=$("catalogSearch").value.trim().toLowerCase();
+ if(term.length<2){catalogSearchMode=false;catalogItems=[];loadCatalogPage(1).catch(e=>say("catalogMsg",e.message));return}
+ if(!catalogIndex)return;
+ try{
+  $("searchCatalogAll").disabled=true;$("catalogGroup").value="";catalogSearchMode=true;catalogItems=[];renderCatalog();say("catalogMsg","Buscando en películas, series y canales…");
+  const types=["movies","series","live"],tasks=[];
+  for(const type of types){const pages=Number(catalogIndex.categories?.[type]?.page_count||0);for(let p=1;p<=pages;p++)tasks.push({type,p})}
+  const found=[],seen=new Set();let next=0,done=0,lastPaint=0;
+  const paint=()=>{
+   if(runId!==catalogSearchRunId)return;
+   catalogItems=found.slice();renderCatalog();
+   say("catalogMsg","Buscando… "+found.length+" resultados encontrados · "+done+" / "+tasks.length+" páginas revisadas");
+  };
+  const workers=Array.from({length:12},async()=>{
+   while(next<tasks.length&&runId===catalogSearchRunId){
+    const task=tasks[next++];
+    try{
+     const url=GHRAW+"catalog_pages/"+task.type+"/page-"+String(task.p).padStart(6,"0")+".json",r=await fetch(url);
+     if(r.ok){
+      const rows=await r.json();
+      for(const x of rows){
+       if((String(x.name||"")+" "+String(x.group||"")).toLowerCase().includes(term)){
+        const key=task.type+"|"+String(x.url||x.name||"");
+        if(!seen.has(key)){seen.add(key);found.push({...x,_type:task.type})}
+       }
+      }
+     }
+    }catch{}
+    if(runId!==catalogSearchRunId)return;
+    done++;
+    if(found.length!==lastPaint){lastPaint=found.length;paint()}
+    else if(done%12===0)say("catalogMsg","Buscando… "+found.length+" resultados encontrados · "+done+" / "+tasks.length+" páginas revisadas");
+   }
+  });
+  await Promise.all(workers);
+  if(runId!==catalogSearchRunId)return;
+  catalogItems=found;catalogType="movies";document.querySelectorAll("[data-catalog]").forEach(btn=>btn.classList.remove("active"));renderCatalog();
+  say("catalogMsg","Búsqueda general terminada: "+found.length+" resultados.");
+ }catch(e){if(runId===catalogSearchRunId)say("catalogMsg","Error al buscar: "+e.message)}
+ finally{if(runId===catalogSearchRunId)$("searchCatalogAll").disabled=false}
 }
 
 
