@@ -168,6 +168,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     var remoteBlocked by remember { mutableStateOf(true) }
     var remoteError by remember { mutableStateOf(false) }
     var remoteMessage by remember { mutableStateOf("Verificando autorización…") }
+    var contentEnabled by remember { mutableStateOf(true) }
     var favorites by remember { mutableStateOf(store.favorites()) }
     var recents by remember { mutableStateOf(store.recents()) }
 
@@ -183,6 +184,26 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
         message = "Comprobando actualizaciones…"
         scope.launch {
             try {
+                val personalUrl = store.playlistUrl.trim()
+                if (personalUrl.isNotEmpty()) {
+                    message = "Cargando tu lista personal…"
+                    val personalEntries = withContext(Dispatchers.IO) { downloadEntries(personalUrl) }
+                    require(personalEntries.isNotEmpty()) { "La lista personal no contiene canales o videos válidos." }
+                    withContext(Dispatchers.IO) { store.saveCache(personalEntries) }
+                    entries = personalEntries
+                    loadedEntriesCount = personalEntries.size
+                    message = "Lista personal cargada · ${personalEntries.size} elementos"
+                    initialLoadReady = true
+                    return@launch
+                }
+                if (!contentEnabled) {
+                    entries = emptyList()
+                    loadedEntriesCount = 0
+                    message = "El catálogo general está desactivado. Abre Ajustes para agregar tu lista M3U personal."
+                    statusError = true
+                    initialLoadReady = true
+                    return@launch
+                }
                 val source = PagedCatalogSource()
                 val manifest = withContext(Dispatchers.IO) { source.loadManifest() }
                 val cached = withContext(Dispatchers.IO) { store.readCache() }
@@ -302,6 +323,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
 
     LaunchedEffect(Unit) {
         var wasBlocked = true
+        var previousContentEnabled: Boolean? = null
         while (true) {
             try {
                 val control = loadClientStatus(accessToken, deviceKey)
@@ -309,6 +331,10 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                 remoteError = false
                 remoteBlocked = control.isSuspended
                 remoteMessage = control.maintenanceMessage
+                val catalogPermissionChanged = previousContentEnabled != null &&
+                    previousContentEnabled != control.contentEnabled
+                contentEnabled = control.contentEnabled
+                previousContentEnabled = control.contentEnabled
 
                 if (control.isSuspended) {
                     wasBlocked = true
@@ -317,6 +343,13 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                     selectedMovie = null
                     showSettings = false
                     initialLoadReady = false
+                } else if (catalogPermissionChanged) {
+                    entries = emptyList()
+                    loadedEntriesCount = 0
+                    initialLoadReady = false
+                    delay(100)
+                    refresh()
+                    wasBlocked = false
                 } else if (wasBlocked) {
                     val cached = withContext(Dispatchers.IO) { store.readCache() }
                     if (cached.isNotEmpty()) {
