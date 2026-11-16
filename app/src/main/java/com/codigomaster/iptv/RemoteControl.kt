@@ -84,17 +84,18 @@ internal suspend fun loginClient(context: Context, username: String, password: S
     ClientSession(token, userId, key)
 }
 
-internal suspend fun loadClientStatus(accessToken: String, deviceKey: String): RemoteAppControl = withContext(Dispatchers.IO) {
+internal suspend fun loadClientStatus(accessToken: String, deviceKey: String, playlistId: String = ""): RemoteAppControl = withContext(Dispatchers.IO) {
     val status = requestJson(
         "$CM_SUPABASE_URL/functions/v1/master-control",
         "POST", accessToken,
-        JSONObject().put("action", "client_status").put("device_key", deviceKey)
+        JSONObject().put("action", "client_status").put("device_key", deviceKey).put("playlist_id", playlistId)
     )
     val message = when {
         !status.optBoolean("account_active", false) -> "Tu cuenta está suspendida o vencida. Contacta al administrador."
         status.optBoolean("global_suspended", false) -> status.optString("maintenance_message", "La aplicación está en mantenimiento.")
         !status.optBoolean("device_registered", false) -> "Este dispositivo no está registrado. Vuelve a iniciar sesión."
         status.optBoolean("device_blocked", false) -> "Este dispositivo ha sido bloqueado por el administrador."
+        !status.optBoolean("playlist_active", true) -> "La lista que estás usando fue desactivada o suspendida por el administrador."
         else -> ""
     }
     RemoteAppControl(message.isNotBlank(), message, status.optBoolean("content_enabled", true))
