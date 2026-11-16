@@ -10,7 +10,7 @@ import java.net.URL
 import java.util.UUID
 
 private const val CM_SUPABASE_URL = "https://drfzysksothwyyyzgkqe.supabase.co"
-private const val CM_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZn p6eXNr c290aHd5eXl6Z2txZQ".replace(" ", "")
+private const val CM_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZnp5c2tzb3Rod3l5eXpna3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3ODc4OTQsImV4cCI6MjExMDM2Mzg5NH0.jMkAgVVzlbDjWf4XF-2htsgxUYbf-sgK6JL635sYdvY".replace(" ", "")
 
 internal data class ClientSession(val accessToken: String, val userId: String, val deviceKey: String)
 internal data class RemoteAppControl(val isSuspended: Boolean, val maintenanceMessage: String)
