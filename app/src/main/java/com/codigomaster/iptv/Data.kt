@@ -50,6 +50,11 @@ class Store(context: Context) {
 
     val effectiveUrl: String get() = playlistUrl.ifBlank { DEFAULT_PLAYLIST_URL }
 
+    /** ID de la lista personal guardada en el panel del cliente; permite respetar bloqueos remotos. */
+    var selectedPlaylistId: String
+        get() = prefs.getString("selected_playlist_id", "").orEmpty()
+        set(value) { prefs.edit().putString("selected_playlist_id", value).apply() }
+
     /** AUTO, EXO o VLC. */
     var engine: String
         get() = prefs.getString("engine", "AUTO").orEmpty().ifBlank { "AUTO" }
