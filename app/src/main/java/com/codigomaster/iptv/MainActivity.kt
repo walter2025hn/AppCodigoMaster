@@ -184,7 +184,17 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
         message = "Comprobando actualizaciones…"
         scope.launch {
             try {
-                val personalUrl = store.playlistUrl.trim()
+                val selectedId = store.selectedPlaylistId
+                val personalUrl = if (selectedId.isNotBlank()) {
+                    val saved = withContext(Dispatchers.IO) {
+                        listClientPlaylists(accessToken, deviceKey).firstOrNull { it.id == selectedId }
+                            ?: throw IllegalStateException("La lista guardada ya no existe en tu cuenta.")
+                    }
+                    if (!saved.isEnabled || saved.isSuspended) {
+                        throw IllegalStateException("La lista está desactivada o suspendida por el administrador.")
+                    }
+                    withContext(Dispatchers.IO) { loadClientPlaylistUrl(accessToken, deviceKey, saved) }
+                } else store.playlistUrl.trim()
                 if (personalUrl.isNotEmpty()) {
                     message = "Cargando tu lista personal…"
                     val personalEntries = withContext(Dispatchers.IO) { downloadEntries(personalUrl) }
@@ -326,7 +336,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
         var previousContentEnabled: Boolean? = null
         while (true) {
             try {
-                val control = loadClientStatus(accessToken, deviceKey)
+                val control = loadClientStatus(accessToken, deviceKey, store.selectedPlaylistId)
                 controlChecked = true
                 remoteError = false
                 remoteBlocked = control.isSuspended
@@ -583,7 +593,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     }
 
     if (showSettings) {
-        SettingsDialog(store, onSave = { showSettings = false; refresh() }, onDismiss = { showSettings = false })
+        SettingsDialog(store, accessToken, deviceKey, onSave = { showSettings = false; refresh() }, onDismiss = { showSettings = false })
     }
     }
 }
