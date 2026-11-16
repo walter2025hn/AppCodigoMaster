@@ -18,6 +18,13 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import java.security.KeyStore
 import android.util.Base64
 
 const val DEFAULT_PLAYLIST_URL =
@@ -54,6 +61,47 @@ class Store(context: Context) {
         set(value) { prefs.edit().putString("custom_url", value.trim()).apply() }
 
     val effectiveUrl: String get() = playlistUrl.ifBlank { DEFAULT_PLAYLIST_URL }
+
+    /** Guarda la sesión cifrada con una clave protegida por Android Keystore. */
+    fun saveSession(accessToken: String, deviceKey: String) {
+        require(accessToken.isNotBlank() && deviceKey.isNotBlank())
+        val raw = "$accessToken\n$deviceKey".toByteArray(Charsets.UTF_8)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, sessionSecretKey())
+        val payload = cipher.iv + cipher.doFinal(raw)
+        prefs.edit().putString("auth_session_v1", Base64.encodeToString(payload, Base64.NO_WRAP)).apply()
+    }
+
+    fun savedSession(): Pair<String, String>? {
+        val encoded = prefs.getString("auth_session_v1", null) ?: return null
+        return try {
+            val payload = Base64.decode(encoded, Base64.NO_WRAP)
+            require(payload.size > 12)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, sessionSecretKey(), GCMParameterSpec(128, payload.copyOfRange(0, 12)))
+            val parts = String(cipher.doFinal(payload.copyOfRange(12, payload.size)), Charsets.UTF_8).split("\n", limit = 2)
+            if (parts.size == 2 && parts.all { it.isNotBlank() }) parts[0] to parts[1]
+            else { clearSession(); null }
+        } catch (_: Exception) {
+            clearSession()
+            null
+        }
+    }
+
+    fun clearSession() { prefs.edit().remove("auth_session_v1").apply() }
+
+    private fun sessionSecretKey(): SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (keyStore.getKey("cm_client_session_v1", null) as? SecretKey)?.let { return it }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(KeyGenParameterSpec.Builder(
+            "cm_client_session_v1",
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true).build())
+        return generator.generateKey()
+    }
 
     /** ID de la lista personal guardada en el panel del cliente; permite respetar bloqueos remotos. */
     var selectedPlaylistId: String
