@@ -79,8 +79,9 @@ private data class Filtered(val live: List<Entry>, val movies: List<Entry>, val 
 private fun CodigoMasterApp(store: Store) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var accessToken by remember { mutableStateOf("") }
-    var deviceKey by remember { mutableStateOf("") }
+    val restoredSession = remember(store) { store.savedSession() }
+    var accessToken by remember { mutableStateOf(restoredSession?.first.orEmpty()) }
+    var deviceKey by remember { mutableStateOf(restoredSession?.second.orEmpty()) }
     var busy by remember { mutableStateOf(false) }
     var loginError by remember { mutableStateOf("") }
 
@@ -127,6 +128,7 @@ private fun CodigoMasterApp(store: Store) {
                             scope.launch {
                                 try {
                                     val session = loginClient(context, username, password)
+                                    store.saveSession(session.accessToken, session.deviceKey)
                                     accessToken = session.accessToken
                                     deviceKey = session.deviceKey
                                 } catch (e: Exception) {
