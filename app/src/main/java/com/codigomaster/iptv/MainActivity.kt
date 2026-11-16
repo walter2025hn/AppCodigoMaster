@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (!isTelevision(this)) AdsConsentManager.gatherConsent(this)
         val store = Store(applicationContext)
+        Cm.load(store)
         val tv = isTelevision(this)
         val ratings = RatingsRepo(store)
         setContent {
