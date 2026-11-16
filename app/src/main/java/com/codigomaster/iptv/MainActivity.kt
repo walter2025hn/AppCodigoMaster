@@ -66,6 +66,81 @@ private data class Filtered(val live: List<Entry>, val movies: List<Entry>, val 
 private fun CodigoMasterApp(store: Store) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var accessToken by remember { mutableStateOf("") }
+    var deviceKey by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var loginError by remember { mutableStateOf("") }
+
+    if (accessToken.isNotBlank() && deviceKey.isNotBlank()) {
+        CodigoMasterHome(store, accessToken, deviceKey)
+    } else {
+        Surface(Modifier.fillMaxSize(), color = Cm.Bg) {
+            var username by remember { mutableStateOf("") }
+            var password by remember { mutableStateOf("") }
+            Column(
+                Modifier.fillMaxSize().padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Image(
+                    painterResource(R.drawable.brand_logo), null,
+                    Modifier.size(112.dp).clip(RoundedCornerShape(24.dp))
+                        .border(1.5.dp, Cm.Gold, RoundedCornerShape(24.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(Modifier.height(18.dp))
+                Text("MASTERCode TV", color = Cm.Text, fontSize = 23.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(8.dp))
+                Text("Inicia sesión con tu cuenta", color = Cm.Muted, fontSize = 14.sp)
+                Spacer(Modifier.height(18.dp))
+                OutlinedTextField(
+                    value = username, onValueChange = { username = it },
+                    label = { Text("Usuario") }, singleLine = true,
+                    modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it },
+                    label = { Text("Contraseña") }, singleLine = true,
+                    modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        if (!busy) {
+                            busy = true
+                            loginError = ""
+                            scope.launch {
+                                try {
+                                    val session = loginClient(context, username, password)
+                                    accessToken = session.accessToken
+                                    deviceKey = session.deviceKey
+                                } catch (e: Exception) {
+                                    loginError = e.message ?: "No se pudo iniciar sesión."
+                                } finally {
+                                    busy = false
+                                }
+                            }
+                        }
+                    },
+                    enabled = !busy && username.isNotBlank() && password.isNotBlank(),
+                    modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()
+                ) {
+                    Text(if (busy) "VERIFICANDO CUENTA…" else "INICIAR SESIÓN")
+                }
+                if (loginError.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(loginError, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val tv = remember(context) { isTelevision(context) }
     val wide = tv || LocalConfiguration.current.screenWidthDp >= 840
     val classic = LocalConfiguration.current.screenWidthDp >= 560
@@ -229,7 +304,7 @@ private fun CodigoMasterApp(store: Store) {
         var wasBlocked = true
         while (true) {
             try {
-                val control = loadRemoteAppControl()
+                val control = loadClientStatus(accessToken, deviceKey)
                 controlChecked = true
                 remoteError = false
                 remoteBlocked = control.isSuspended
