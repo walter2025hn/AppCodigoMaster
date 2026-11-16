@@ -179,6 +179,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     var availableRelease by remember { mutableStateOf<AppRelease?>(null) }
     var dismissedReleaseCode by remember { mutableIntStateOf(0) }
     var contentEnabled by remember { mutableStateOf(true) }
+    var parentalEnabled by remember { mutableStateOf(store.parentalProtectionEnabled) }
     var favorites by remember { mutableStateOf(store.favorites()) }
     var recents by remember { mutableStateOf(store.recents()) }
     var lastAdSection by remember { mutableStateOf(Section.HOME) }
@@ -444,24 +445,27 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
         val next = search.trim()
         if (next.isEmpty()) q = "" else { delay(300); q = next }
     }
-    val filtered by produceState(Filtered(catalog.live, catalog.movies, catalog.series), catalog, q) {
-        value = if (q.isBlank()) Filtered(catalog.live, catalog.movies, catalog.series)
+    val displayCatalog = remember(catalog, parentalEnabled) {
+        if (parentalEnabled) catalog.withoutAdultContent() else catalog
+    }
+    val filtered by produceState(Filtered(displayCatalog.live, displayCatalog.movies, displayCatalog.series), displayCatalog, q) {
+        value = if (q.isBlank()) Filtered(displayCatalog.live, displayCatalog.movies, displayCatalog.series)
         else withContext(Dispatchers.Default) {
             Filtered(
-                catalog.live.filter { it.name.contains(q, true) || it.group.contains(q, true) },
-                catalog.movies.filter { it.name.contains(q, true) || it.group.contains(q, true) },
-                catalog.series.filter { it.title.contains(q, true) || it.group.contains(q, true) }
+                displayCatalog.live.filter { it.name.contains(q, true) || it.group.contains(q, true) },
+                displayCatalog.movies.filter { it.name.contains(q, true) || it.group.contains(q, true) },
+                displayCatalog.series.filter { it.title.contains(q, true) || it.group.contains(q, true) }
             )
         }
     }
     val fLive = filtered.live
     val fMovies = filtered.movies
     val fSeries = filtered.series
-    val continueWatching = remember(recents, entries) {
-        val byUrl = entries.associateBy { it.url }
+    val continueWatching = remember(recents, entries, parentalEnabled) {
+        val byUrl = entries.filterNot { parentalEnabled && isAdultContent(it.name, it.group, it.attributes) }.associateBy { it.url }
         recents.mapNotNull { byUrl[it] }.filter { store.position(it.url) > 10_000 }.take(12)
     }
-    val catalogEmpty = catalog.live.isEmpty() && catalog.movies.isEmpty() && catalog.series.isEmpty()
+    val catalogEmpty = displayCatalog.live.isEmpty() && displayCatalog.movies.isEmpty() && displayCatalog.series.isEmpty()
 
     BackHandler(enabled = play == null && selectedSeries == null && selectedMovie == null && !showSettings) {
         when {
@@ -509,7 +513,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
             if (detailSeries != null || detailMovie != null) {
                 Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                     DetailScreen(
-                        movie = detailMovie, series = detailSeries, catalog = catalog, store = store,
+                        movie = detailMovie, series = detailSeries, catalog = displayCatalog, store = store,
                         favorites = favorites, onToggleFavorite = ::toggleFavorite,
                         onPlay = { play = it },
                         onMovie = { selectedMovie = it; selectedSeries = null },
@@ -521,13 +525,13 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                 val blocker = when {
                     entries.isEmpty() && loading -> 1
                     entries.isEmpty() -> 2
-                    catalogEmpty -> 1
+                    catalogEmpty -> if (parentalEnabled) 2 else 1
                     else -> 0
                 }
                 Column(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f)) {
                         ClassicHome(
-                    state = classicState, store = store, catalog = catalog,
+                    state = classicState, store = store, catalog = displayCatalog,
                     fLive = fLive, fMovies = fMovies, fSeries = fSeries,
                     q = q, search = search, onSearch = { search = it },
                     continueWatching = continueWatching, favorites = favorites,
@@ -564,11 +568,11 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                             when {
                                 entries.isEmpty() && loading -> LoadingState()
                                 entries.isEmpty() -> EmptyState(Icons.Filled.CloudOff, "Sin contenido", "No pudimos cargar la lista. Toca actualizar para reintentar.")
-                                catalogEmpty -> LoadingState()
+                                catalogEmpty -> if (parentalEnabled) EmptyState(Icons.Filled.Lock, "Contenido protegido", "El control parental está ocultando el contenido +18. Puedes cambiarlo en Ajustes.") else LoadingState()
                                 q.isNotBlank() && (section == Section.HOME || section == Section.FAVS) ->
                                     SearchResults(fLive, fMovies, fSeries, wide, { play = it }, { selectedSeries = it })
                                 else -> when (section) {
-                                    Section.HOME -> HomeScreen(catalog, continueWatching, store, favorites, wide, { section = it }, { play = it }, { selectedSeries = it }, ::toggleFavorite)
+                                    Section.HOME -> HomeScreen(displayCatalog, continueWatching, store, favorites, wide, { section = it }, { play = it }, { selectedSeries = it }, ::toggleFavorite)
                                     Section.LIVE -> LiveScreen(fLive, favorites, wide, { play = it }, ::toggleFavorite)
                                     Section.MOVIES -> MoviesScreen(fMovies, favorites, wide, { play = it })
                                     Section.SERIES -> SeriesScreen(fSeries, favorites, wide) { selectedSeries = it }
@@ -584,7 +588,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
                                         fSeries.filter { isKidsContent(it.title, it.group) },
                                         wide, { play = it }, { selectedSeries = it }
                                     )
-                                    Section.FAVS -> FavoritesScreen(catalog, favorites, wide, { play = it }, { selectedSeries = it })
+                                    Section.FAVS -> FavoritesScreen(displayCatalog, favorites, wide, { play = it }, { selectedSeries = it })
                                 }
                             }
                         }
@@ -680,7 +684,7 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     }
 
     if (showSettings) {
-        SettingsDialog(store, accessToken, deviceKey, onSave = { showSettings = false; refresh() }, onDismiss = { showSettings = false })
+        SettingsDialog(store, accessToken, deviceKey, onSave = { parentalEnabled = store.parentalProtectionEnabled; showSettings = false; refresh() }, onDismiss = { parentalEnabled = store.parentalProtectionEnabled; showSettings = false })
     }
     }
 }
