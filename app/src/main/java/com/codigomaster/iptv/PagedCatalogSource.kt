@@ -4,11 +4,31 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 /**
  * Fuente HTTP paginada del catálogo Código Master.
  * Cada llamada loadPage descarga como máximo 50 registros JSON.
  */
+/** Huella estable por página: permite reconocer la caché anterior aunque aún no guardara hashes. */
+fun pageFingerprint(entries: List<Entry>): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    entries.forEach { entry ->
+        listOf(entry.name, entry.url, entry.group, entry.logo, entry.tvgId, entry.attributes, entry.section).forEach { value ->
+            val bytes = value.toByteArray(Charsets.UTF_8)
+            val size = bytes.size
+            digest.update(byteArrayOf(
+                (size ushr 24).toByte(),
+                (size ushr 16).toByte(),
+                (size ushr 8).toByte(),
+                size.toByte()
+            ))
+            digest.update(bytes)
+        }
+    }
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+}
+
 data class CatalogManifest(
     val total: Int,
     val pageSize: Int,
