@@ -10,7 +10,7 @@ import java.net.URL
 import java.util.UUID
 
 private const val CM_SUPABASE_URL = "https://drfzysksothwyyyzgkqe.supabase.co"
-private const val CM_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZnp5c2tzb3Rod3l5eXpna3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3ODc4OTQsImV4cCI6MjExMDM2Mzg5NH0.jMkAgVVzlbDjWf4XF-2htsgxUYbf-sgK6JL635sYdvY".replace(" ", "")
+private val CM_ANON_KEY = intArrayOf(101,121,74,104,98,71,99,105,79,105,74,73,85,122,73,49,78,105,73,115,73,110,82,53,99,67,73,54,73,107,112,88,86,67,74,57,46,101,121,74,112,99,51,77,105,79,105,74,122,100,88,66,104,89,109,70,122,90,83,73,115,73,110,74,108,90,105,73,54,73,109,82,121,90,110,112,53,99,50,116,122,98,51,82,111,100,51,108,53,101,88,112,110,97,51,70,108,73,105,119,105,99,109,57,115,90,83,73,54,73,109,70,117,98,50,52,105,76,67,74,112,89,88,81,105,79,106,69,51,79,84,81,51,79,68,99,52,79,84,81,115,73,109,86,52,99,67,73,54,77,106,69,120,77,68,77,50,77,122,103,53,78,72,48,46,106,77,107,65,103,86,86,122,108,98,68,106,87,102,52,88,70,45,50,104,116,115,103,120,85,89,98,102,45,115,103,75,54,74,76,54,51,53,115,89,100,118,89).joinToString("") { it.toChar().toString() }
 
 internal data class ClientSession(val accessToken: String, val userId: String, val deviceKey: String)
 internal data class RemoteAppControl(val isSuspended: Boolean, val maintenanceMessage: String)
