@@ -67,7 +67,7 @@ async function loadCatalogIndex(){const r=await fetch(GHRAW+"catalog_pages/catal
 async function loadCatalogPage(page){
  if(!catalogIndex)throw Error("Índice del catálogo no disponible.");const meta=catalogIndex.categories?.[catalogType];if(!meta)throw Error("No hay datos para esta categoría.");
  catalogPageNo=Math.max(1,Math.min(page,Math.max(1,meta.page_count)));say("catalogMsg","Cargando página…");
- const file=meta.page_pattern.replace("{page",String(catalogPageNo).padStart(6,"0"));
+ const file=catalogType+"/page-"+String(catalogPageNo).padStart(6,"0")+".json";
  const r=await fetch(GHRAW+"catalog_pages/"+file);if(!r.ok)throw Error("No se pudo cargar la página "+catalogPageNo);
  catalogItems=await r.json();const groups=[...new Set(catalogItems.map(x=>x.group||"Sin categoría"))].sort();$("catalogGroup").innerHTML='<option value="">Todas las categorías</option>'+groups.map(g=>'<option value="'+esc(g)+'">'+esc(g)+'</option>').join("");
  renderCatalog();say("catalogMsg","");
