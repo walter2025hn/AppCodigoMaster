@@ -381,7 +381,7 @@ private fun ChannelTile(entry: Entry, selected: Boolean, favorite: Boolean, onTo
     Row(
         Modifier.fillMaxWidth()
             .tvClickableLong(shape, 1.03f, { showRate = true }, onClick)
-            .background(if (selected) Color(0x26FFFFFF) else Color.Transparent)
+            .background(if (selected) Cm.Selection.copy(alpha = 0.22f) else Color.Transparent)
             .padding(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
