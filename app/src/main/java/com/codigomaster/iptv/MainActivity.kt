@@ -390,6 +390,26 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
             delay(10_000)
         }
     }
+
+    // Sincroniza las modificaciones globales del panel sin descargar de nuevo las 256 mil entradas.
+    // La APK consulta únicamente las diferencias guardadas en Supabase cada 60 segundos.
+    LaunchedEffect(initialLoadReady, accessToken, deviceKey, contentEnabled, loading) {
+        if (!initialLoadReady || loading || !contentEnabled ||
+            store.selectedPlaylistId.isNotBlank() || store.playlistUrl.isNotBlank()) return@LaunchedEffect
+        while (true) {
+            try {
+                val base = withContext(Dispatchers.IO) { store.readCache() }
+                if (base.isNotEmpty()) {
+                    val changes = loadClientCatalogOverrides(accessToken, deviceKey)
+                    entries = withContext(Dispatchers.Default) { applyCatalogOverrides(base, changes) }
+                }
+            } catch (_: Exception) {
+                // Si no hay conexión, se conserva el catálogo que ya está en pantalla.
+            }
+            delay(60_000)
+        }
+    }
+
     LaunchedEffect(entries) { catalog = withContext(Dispatchers.Default) { buildCatalog(entries) } }
     LaunchedEffect(initialLoadReady) {
         if (initialLoadReady) {
