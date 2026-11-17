@@ -227,6 +227,7 @@ fun PosterCard(
     // Para series, prioriza el póster oficial encontrado en TMDB; conserva el logo M3U como respaldo.
     val seriesMeta = if (ratingKind == RatingKind.SERIES) rememberMeta(title, RatingKind.SERIES) else null
     val displayImage = seriesMeta?.poster?.takeIf { it.startsWith("http") } ?: image
+    val displayTitle = if (ratingKind == RatingKind.SERIES) seriesMeta?.displayTitle?.takeIf { it.isNotBlank() } ?: title else title
     Column(modifier) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(2f / 3f)
@@ -259,7 +260,7 @@ fun PosterCard(
             }
         }
         Spacer(Modifier.height(7.dp))
-        Text(title, color = Cm.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
+        Text(displayTitle, color = Cm.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
         Text(subtitle, color = Cm.Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
     if (showRate && ratingKey != null) RateDialog(title, ratingKey, ratingKind, { showRate = false })
