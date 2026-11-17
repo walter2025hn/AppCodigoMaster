@@ -3,6 +3,7 @@ package com.codigomaster.iptv
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,7 +15,8 @@ import java.util.UUID
 private const val CM_SUPABASE_URL = "https://drfzysksothwyyyzgkqe.supabase.co"
 private val CM_ANON_KEY = intArrayOf(101,121,74,104,98,71,99,105,79,105,74,73,85,122,73,49,78,105,73,115,73,110,82,53,99,67,73,54,73,107,112,88,86,67,74,57,46,101,121,74,112,99,51,77,105,79,105,74,122,100,88,66,104,89,109,70,122,90,83,73,115,73,110,74,108,90,105,73,54,73,109,82,121,90,110,112,53,99,50,116,122,98,51,82,111,100,51,108,53,101,88,112,110,97,51,70,108,73,105,119,105,99,109,57,115,90,83,73,54,73,109,70,117,98,50,52,105,76,67,74,112,89,88,81,105,79,106,69,51,79,84,81,51,79,68,99,52,79,84,81,115,73,109,86,52,99,67,73,54,77,106,69,120,77,68,77,50,77,122,103,53,78,72,48,46,106,77,107,65,103,86,86,122,108,98,68,106,87,102,52,88,70,45,50,104,116,115,103,120,85,89,98,102,45,115,103,75,54,74,76,54,51,53,115,89,100,118,89).joinToString("") { it.toChar().toString() }
 
-internal data class ClientSession(val accessToken: String, val userId: String, val deviceKey: String)
+internal data class ClientSession(val accessToken: String, val userId: String, val deviceKey: String, val refreshToken: String)
+internal data class RefreshedClientTokens(val accessToken: String, val refreshToken: String)
 internal data class ClientAnnouncement(val id: String, val title: String, val message: String, val forceAck: Boolean)
 internal data class AppRelease(val versionName: String, val versionCode: Int, val downloadUrl: String, val releaseNotes: String, val forceUpdate: Boolean)
 internal data class RemoteAppControl(
@@ -31,6 +33,8 @@ private fun androidDeviceIdHash(context: Context): String {
     // Hash before transmission; never send or store the raw Android ID.
     return if (androidId.isBlank()) "" else sha256Hex("codigo-master-device-v1:$androidId")
 }
+
+private class HttpRequestException(val statusCode: Int, message: String) : IllegalStateException(message)
 
 private fun requestJson(url: String, method: String, token: String? = null, body: JSONObject? = null): JSONObject {
     val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -53,7 +57,7 @@ private fun requestJson(url: String, method: String, token: String? = null, body
         val result = if (text.isBlank()) JSONObject() else JSONObject(text)
         if (code !in 200..299) {
             val message = result.optString("msg", result.optString("message", result.optString("error", "HTTP $code")))
-            throw IllegalStateException(message)
+            throw HttpRequestException(code, message)
         }
         return result
     } finally {
@@ -71,8 +75,9 @@ internal suspend fun loginClient(context: Context, username: String, password: S
         body = JSONObject().put("email", "$cleanUser@accounts.codigomaster.local").put("password", password)
     )
     val token = auth.optString("access_token")
+    val refreshToken = auth.optString("refresh_token")
     val userId = auth.optJSONObject("user")?.optString("id").orEmpty()
-    if (token.isBlank() || userId.isBlank()) throw IllegalStateException("No se pudo iniciar sesión.")
+    if (token.isBlank() || refreshToken.isBlank() || userId.isBlank()) throw IllegalStateException("No se pudo iniciar sesión.")
     val prefs = context.getSharedPreferences("mastercode_device", Context.MODE_PRIVATE)
     val key = prefs.getString("device_key", null) ?: UUID.randomUUID().toString().also {
         prefs.edit().putString("device_key", it).apply()
@@ -99,7 +104,34 @@ internal suspend fun loginClient(context: Context, username: String, password: S
         }
         throw IllegalStateException(message)
     }
-    ClientSession(token, userId, key)
+    ClientSession(token, userId, key, refreshToken)
+}
+
+/** Renueva el JWT antes de que caduque. Devuelve null si todavía tiene vida suficiente. */
+internal suspend fun refreshClientSessionIfNeeded(accessToken: String, refreshToken: String): RefreshedClientTokens? = withContext(Dispatchers.IO) {
+    if (refreshToken.isBlank()) throw ClientSessionInvalidException("Tu sesión anterior no tiene renovación automática. Inicia sesión una vez más para mantener el acceso.")
+    val expiresAt = try {
+        val payload = accessToken.split(".").getOrNull(1) ?: ""
+        val decoded = Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        JSONObject(String(decoded, Charsets.UTF_8)).optLong("exp", 0L)
+    } catch (_: Exception) { 0L }
+    if (expiresAt > System.currentTimeMillis() / 1000L + 120L) return@withContext null
+    try {
+        val auth = requestJson(
+            "$CM_SUPABASE_URL/auth/v1/token?grant_type=refresh_token",
+            "POST",
+            body = JSONObject().put("refresh_token", refreshToken)
+        )
+        val nextAccess = auth.optString("access_token")
+        val nextRefresh = auth.optString("refresh_token")
+        if (nextAccess.isBlank() || nextRefresh.isBlank()) throw IllegalStateException("El servidor no devolvió una sesión renovada.")
+        RefreshedClientTokens(nextAccess, nextRefresh)
+    } catch (e: HttpRequestException) {
+        if (e.statusCode == 400 || e.statusCode == 401) {
+            throw ClientSessionInvalidException("La sesión venció o fue revocada. Inicia sesión de nuevo.")
+        }
+        throw e
+    }
 }
 
 internal class ClientSessionInvalidException(message: String) : IllegalStateException(message)
