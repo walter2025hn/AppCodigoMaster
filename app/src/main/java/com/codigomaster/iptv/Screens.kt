@@ -442,6 +442,8 @@ fun SeriesDetail(
     BackHandler { onBack() }
     var showRate by remember { mutableStateOf(false) }
     val score = rememberScore(series.key, series.title, RatingKind.SERIES)
+    val seriesMeta = rememberMeta(series.title, RatingKind.SERIES)
+    val seriesPoster = seriesMeta?.poster?.takeIf { it.startsWith("http") } ?: series.poster
     if (showRate) RateDialog(series.title, series.key, RatingKind.SERIES, { showRate = false }, favorite, onToggleFavorite)
     val seasons = remember(series) { series.episodes.map { episodeNumber(it.name).first }.distinct().sorted() }
     var season by remember(series) { mutableStateOf(seasons.firstOrNull() ?: 0) }
@@ -453,7 +455,7 @@ fun SeriesDetail(
     LazyColumn(contentPadding = PaddingValues(bottom = 28.dp)) {
         item {
             Box(Modifier.fillMaxWidth().height(if (wide) 330.dp else 290.dp)) {
-                Poster(series.poster, Modifier.fillMaxSize().alpha(0.45f), decodeWidth = 480, decodeHeight = 720)
+                Poster(seriesPoster, Modifier.fillMaxSize().alpha(0.45f), decodeWidth = 480, decodeHeight = 720)
                 Box(Modifier.fillMaxSize().background(Color(0xAA050810)))
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Cm.Bg)))
                 Row(
@@ -465,7 +467,7 @@ fun SeriesDetail(
                     Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    Poster(series.poster, Modifier.width(if (wide) 150.dp else 104.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(12.dp)), decodeWidth = 360, decodeHeight = 540)
+                    Poster(seriesPoster, Modifier.width(if (wide) 150.dp else 104.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(12.dp)), decodeWidth = 360, decodeHeight = 540)
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(series.title, color = Color.White, fontSize = if (wide) 30.sp else 21.sp, fontWeight = FontWeight.Black, maxLines = 3, overflow = TextOverflow.Ellipsis)
