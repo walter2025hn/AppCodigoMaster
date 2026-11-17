@@ -32,6 +32,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 /**
@@ -101,7 +103,8 @@ fun DetailScreen(
     }
 
     // ── Recomendaciones por similitud: películas recomiendan solo películas. ──
-    val recs = remember(catalog, key, title, group, movie != null) {
+    val recs by produceState<List<ShowItem>>(emptyList(), catalog, key, title, group, movie != null) {
+        value = withContext(Dispatchers.Default) {
         fun words(value: String): Set<String> =
             value.lowercase(Locale.ROOT).split(Regex("[^\\p{L}\\p{N}]+"))
                 .filter { it.length > 2 && it !in setOf("the", "and", "con", "para", "una", "uno", "del", "los", "las", "por", "movie", "pelicula", "peliculas", "vod") }
@@ -136,6 +139,8 @@ fun DetailScreen(
                 .take(20)
                 .map { it.second.toShow() }
                 .toList()
+        }
+    
         }
     }
 
