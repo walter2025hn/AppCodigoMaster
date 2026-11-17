@@ -147,27 +147,40 @@ internal fun FilterScreen(
 
     val type = state.fType
     val firstFilterFocus = remember { FocusRequester() }
-    LaunchedEffect(items) {
-        if (items != null) {
+    data class FilterBase(val items: List<FItem>, val genres: List<String>, val years: List<String>, val countries: List<String>, val audios: List<String>)
+    val filterBase by produceState<FilterBase?>(null, items, type) {
+        val source = items
+        value = if (source == null) null else withContext(Dispatchers.Default) {
+            val base = source.filter {
+                when (type) { 0 -> it.entry != null; 1 -> it.series != null; 2 -> it.kids; else -> it.anime }
+            }
+            FilterBase(
+                base,
+                GENRES.map { it.first }.filter { g -> base.any { g in it.genres } },
+                base.mapNotNull { it.year }.distinct().sortedDescending().take(30).map { it.toString() },
+                COUNTRIES.map { it.first }.filter { c -> base.any { c in it.countries } },
+                AUDIOS.map { it.first }.filter { a -> base.any { a in it.audios } }
+            )
+        }
+    }
+    LaunchedEffect(filterBase) {
+        if (filterBase != null) {
             kotlinx.coroutines.delay(160)
             try { firstFilterFocus.requestFocus() } catch (_: IllegalStateException) { }
         }
     }
-    val base = remember(items, type) {
-        items?.filter {
-            when (type) { 0 -> it.entry != null; 1 -> it.series != null; 2 -> it.kids; else -> it.anime }
-        } ?: emptyList()
-    }
-    val genres = remember(base) { GENRES.map { it.first }.filter { g -> base.any { g in it.genres } } }
-    val years = remember(base) { base.mapNotNull { it.year }.distinct().sortedDescending().take(30).map { it.toString() } }
-    val countries = remember(base) { COUNTRIES.map { it.first }.filter { c -> base.any { c in it.countries } } }
-    val audios = remember(base) { AUDIOS.map { it.first }.filter { a -> base.any { a in it.audios } } }
-
-    val shown = remember(base, state.fGenre, state.fYear, state.fCountry, state.fAudio) {
+    val genres = filterBase?.genres.orEmpty()
+    val years = filterBase?.years.orEmpty()
+    val countries = filterBase?.countries.orEmpty()
+    val audios = filterBase?.audios.orEmpty()
+    val shown by produceState<List<FItem>>(emptyList(), filterBase, state.fGenre, state.fYear, state.fCountry, state.fAudio) {
+        val data = filterBase ?: return@produceState
         val g = state.fGenre; val y = state.fYear; val c = state.fCountry; val a = state.fAudio
-        base.filter {
-            (g == null || g in it.genres) && (y == null || it.year?.toString() == y) &&
-                (c == null || c in it.countries) && (a == null || a in it.audios)
+        value = withContext(Dispatchers.Default) {
+            data.items.filter {
+                (g == null || g in it.genres) && (y == null || it.year?.toString() == y) &&
+                    (c == null || c in it.countries) && (a == null || a in it.audios)
+            }
         }
     }
 
