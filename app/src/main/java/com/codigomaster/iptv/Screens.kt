@@ -41,12 +41,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // ───────────────────────────── Inicio ─────────────────────────────
 
 private data class HeroItem(val title: String, val tag: String, val subtitle: String, val image: String, val play: () -> Unit, val favKey: String)
+private data class HomeRows(
+    val hero: List<HeroItem> = emptyList(),
+    val liveRail: List<Entry> = emptyList(),
+    val recentMovies2026: List<Entry> = emptyList(),
+    val movieRail: List<Entry> = emptyList(),
+    val recentSeries2026: List<Series> = emptyList(),
+    val seriesRail: List<Series> = emptyList(),
+    val genreRails: List<Pair<String, List<Entry>>> = emptyList()
+)
 
 @Composable
 fun HomeScreen(
@@ -61,32 +72,50 @@ fun HomeScreen(
     onToggleFavorite: (String) -> Unit
 ) {
     val cardWidth = if (wide) 150.dp else 114.dp
-    val hero = remember(catalog) {
-        val movies = catalog.movies.filter { it.logo.startsWith("http") }.take(4)
-        val series = catalog.series.filter { it.poster.startsWith("http") }.take(3)
-        val out = mutableListOf<HeroItem>()
-        val m = movies.iterator(); val s = series.iterator()
-        while (m.hasNext() || s.hasNext()) {
-            if (m.hasNext()) m.next().let { e ->
-                out += HeroItem(e.name, "PELÍCULA", e.group, e.logo, { onPlay(PlayRequest(listOf(e), 0, false)) }, e.url)
+    // El ordenamiento y el cálculo de carruseles recorren catálogos enormes: ejecutarlos en Default.
+    val rows by produceState(HomeRows(), catalog) {
+        value = withContext(Dispatchers.Default) {
+            val movies = catalog.movies
+            val seriesItems = catalog.series
+            val heroMovies = movies.asSequence().filter { it.logo.startsWith("http") }.take(4).toList()
+            val heroSeries = seriesItems.asSequence().filter { it.poster.startsWith("http") }.take(3).toList()
+            val heroItems = mutableListOf<HeroItem>()
+            val movieIterator = heroMovies.iterator()
+            val seriesIterator = heroSeries.iterator()
+            while (movieIterator.hasNext() || seriesIterator.hasNext()) {
+                if (movieIterator.hasNext()) movieIterator.next().let { e ->
+                    heroItems += HeroItem(e.name, "PELÍCULA", e.group, e.logo, { onPlay(PlayRequest(listOf(e), 0, false)) }, e.url)
+                }
+                if (seriesIterator.hasNext()) seriesIterator.next().let { se ->
+                    heroItems += HeroItem(se.title, "SERIE", "${se.episodes.size} episodios · ${se.group}", se.poster, { onSeries(se) }, se.key)
+                }
             }
-            if (s.hasNext()) s.next().let { se ->
-                out += HeroItem(se.title, "SERIE", "${se.episodes.size} episodios · ${se.group}", se.poster, { onSeries(se) }, se.key)
+            val orderedMovies = newestMovies(movies)
+            val orderedSeries = newestSeries(seriesItems)
+            val topGenres = movies.groupingBy { it.group }.eachCount().entries
+                .filter { it.value >= 6 && it.key != "Sin categoría" }
+                .sortedByDescending { it.value }.take(4)
+            val genreRails = topGenres.map { (genre, _) ->
+                genre to movies.asSequence().filter { it.group == genre }.take(20).toList()
             }
+            HomeRows(
+                hero = heroItems,
+                liveRail = catalog.live.take(24),
+                recentMovies2026 = orderedMovies.filter { contentYear(it.name, it.group, it.attributes) == 2026 }.take(24),
+                movieRail = orderedMovies.take(24),
+                recentSeries2026 = orderedSeries.filter { contentYear(it.title, it.group) == 2026 }.take(24),
+                seriesRail = orderedSeries.take(24),
+                genreRails = genreRails
+            )
         }
-        out
     }
-    val liveRail = remember(catalog) { catalog.live.take(24) }
-    val orderedMovies = remember(catalog) { newestMovies(catalog.movies) }
-    val recentMovies2026 = remember(catalog) { orderedMovies.filter { contentYear(it.name, it.group, it.attributes) == 2026 }.take(24) }
-    val movieRail = remember(catalog) { orderedMovies.take(24) }
-    val orderedSeries = remember(catalog) { newestSeries(catalog.series) }
-    val recentSeries2026 = remember(catalog) { orderedSeries.filter { contentYear(it.title, it.group) == 2026 }.take(24) }
-    val seriesRail = remember(catalog) { orderedSeries.take(24) }
-    val genreRails = remember(catalog.movies) {
-        catalog.movies.groupBy { it.group }.entries.filter { it.value.size >= 6 && it.key != "Sin categoría" }
-            .sortedByDescending { it.value.size }.take(4).map { it.key to it.value.take(20) }
-    }
+    val hero = rows.hero
+    val liveRail = rows.liveRail
+    val recentMovies2026 = rows.recentMovies2026
+    val movieRail = rows.movieRail
+    val recentSeries2026 = rows.recentSeries2026
+    val seriesRail = rows.seriesRail
+    val genreRails = rows.genreRails
 
     LazyColumn(contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         if (hero.isNotEmpty()) item(key = "hero") { Hero(hero, wide, favorites, onToggleFavorite) }
