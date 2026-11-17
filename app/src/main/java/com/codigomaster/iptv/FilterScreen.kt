@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -176,7 +175,7 @@ internal fun FilterScreen(
                 contentPadding = PaddingValues(start = (16 * s).dp, end = (16 * s).dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy((12 * s).dp),
                 verticalArrangement = Arrangement.spacedBy((8 * s).dp),
-                modifier = Modifier.fillMaxSize().focusGroup()
+                modifier = Modifier.fillMaxSize()
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(Modifier.fillMaxWidth().padding(top = (10 * s).dp)) {
@@ -222,13 +221,13 @@ internal fun FilterScreen(
 @Composable
 private fun FilterRow(label: String, options: List<String>, selected: String?, pill: Boolean = false, onSelect: (String?) -> Unit) {
     val s = LocalUiScale.current
-    Row(Modifier.fillMaxWidth().focusGroup().padding(vertical = (1 * s).dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(vertical = (1 * s).dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
             "$label:", color = Color.White, fontWeight = FontWeight.Bold, fontSize = (14 * s).sp,
             textAlign = TextAlign.End, maxLines = 1,
             modifier = Modifier.width((66 * s).dp).padding(end = (8 * s).dp)
         )
-        LazyRow(Modifier.weight(1f).focusGroup(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             if (!pill) item { FilterChip("Todos", selected == null, false) { onSelect(null) } }
             items(options.size) { i -> FilterChip(options[i], selected == options[i], pill) { onSelect(options[i]) } }
         }
