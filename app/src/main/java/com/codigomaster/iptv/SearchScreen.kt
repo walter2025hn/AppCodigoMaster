@@ -43,7 +43,7 @@ private val FieldBg = Color(0xFF262626)
 private val KeyGrey = Color(0xFFB9B9B9)
 private val Amber = Color(0xFFFFA000)
 
-private class Indexed(val item: ShowItem, val folded: String)
+private class Indexed(val item: ShowItem, val titleFolded: String, val groupFolded: String)
 
 private val DIACRITICS = Regex("\\p{InCombiningDiacriticalMarks}+")
 private fun fold(s: String): String =
@@ -74,8 +74,8 @@ internal fun SearchScreen(catalog: Catalog, onOpen: (ShowItem) -> Unit, onClose:
     val index by produceState<List<Indexed>?>(null, catalog) {
         value = withContext(Dispatchers.Default) {
             val out = ArrayList<Indexed>(catalog.movies.size + catalog.series.size)
-            catalog.movies.forEach { out += Indexed(it.toShow(), fold(it.name + " " + it.group)) }
-            catalog.series.forEach { out += Indexed(it.toShow(), fold(it.title + " " + it.group)) }
+            catalog.movies.forEach { out += Indexed(it.toShow(), fold(it.name), fold(it.group)) }
+            catalog.series.forEach { out += Indexed(it.toShow(), fold(it.title), fold(it.group)) }
             out
         }
     }
@@ -92,7 +92,20 @@ internal fun SearchScreen(catalog: Catalog, onOpen: (ShowItem) -> Unit, onClose:
         val idx = index
         value = if (query.isBlank() || idx == null) emptyList() else withContext(Dispatchers.Default) {
             val tokens = fold(query).split(' ').filter { it.isNotBlank() }
-            idx.filter { x -> tokens.all { x.folded.contains(it) } }.take(300).map { it.item }
+            idx.mapNotNull { x ->
+                if (!tokens.all { x.titleFolded.contains(it) || x.groupFolded.contains(it) }) return@mapNotNull null
+                val score = when {
+                    x.titleFolded == tokens.joinToString(" ") -> 1200
+                    x.titleFolded.startsWith(tokens.joinToString(" ")) -> 1000
+                    tokens.all { token -> x.titleFolded.split(Regex("[^a-z0-9]+")).any { it.startsWith(token) } } -> 850
+                    tokens.all { x.titleFolded.contains(it) } -> 700
+                    else -> 250
+                } + tokens.sumOf { token ->
+                    (if (x.titleFolded.contains(token)) 30 else 0) +
+                    (if (x.groupFolded.contains(token)) 5 else 0)
+                }
+                score to x.item
+            }.sortedByDescending { it.first }.take(300).map { it.second }
         }
     }
     val searching = query.isNotBlank()
@@ -109,7 +122,7 @@ internal fun SearchScreen(catalog: Catalog, onOpen: (ShowItem) -> Unit, onClose:
                 ) {
                     Box(Modifier.fillMaxWidth().background(FieldBg).padding(horizontal = (10 * s).dp, vertical = (10 * s).dp)) {
                         if (text.isEmpty()) Text("Buscar películas y series", color = KeyGrey, fontSize = (14 * s).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        else Text(text, color = Color.White, fontSize = (15 * s).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        else Text(text.uppercase(Locale.ROOT), color = Color.White, fontSize = (15 * s).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(Modifier.height((4 * s).dp))
                     Column(Modifier.weight(1f).fillMaxWidth()) {
@@ -126,7 +139,7 @@ internal fun SearchScreen(catalog: Catalog, onOpen: (ShowItem) -> Unit, onClose:
                         val rows = if (numbers) NUMBER_ROWS else LETTER_ROWS
                         rows.forEach { row ->
                             Row(Modifier.weight(1f).fillMaxWidth()) {
-                                row.forEach { k -> Key(1f, { text += k.lowercase(Locale.ROOT) }) { KeyLabel(k) } }
+                                row.forEach { k -> Key(1f, { text += k.uppercase(Locale.ROOT) }) { KeyLabel(k) } }
                             }
                         }
                         if (!numbers) Row(Modifier.weight(1f).fillMaxWidth()) {
