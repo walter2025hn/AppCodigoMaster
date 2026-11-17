@@ -79,30 +79,33 @@ class Store(context: Context) {
     val effectiveUrl: String get() = playlistUrl.ifBlank { DEFAULT_PLAYLIST_URL }
 
     /** Guarda la sesión cifrada con una clave protegida por Android Keystore. */
-    fun saveSession(accessToken: String, deviceKey: String) {
-        require(accessToken.isNotBlank() && deviceKey.isNotBlank())
-        val raw = "$accessToken\n$deviceKey".toByteArray(Charsets.UTF_8)
+    fun saveSession(accessToken: String, deviceKey: String, refreshToken: String) {
+        require(accessToken.isNotBlank() && deviceKey.isNotBlank() && refreshToken.isNotBlank())
+        val raw = "$accessToken\n$deviceKey\n$refreshToken".toByteArray(Charsets.UTF_8)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, sessionSecretKey())
         val payload = cipher.iv + cipher.doFinal(raw)
-        prefs.edit().putString("auth_session_v1", Base64.encodeToString(payload, Base64.NO_WRAP)).apply()
+        prefs.edit().putString("auth_session_v2", Base64.encodeToString(payload, Base64.NO_WRAP))
+            .remove("auth_session_v1").apply()
     }
 
-    fun savedSession(): Pair<String, String>? {
-        val encoded = prefs.getString("auth_session_v1", null) ?: return null
+    fun savedSession(): Triple<String, String, String>? {
+        val encoded = prefs.getString("auth_session_v2", null) ?: return null
         return try {
             val payload = Base64.decode(encoded, Base64.NO_WRAP)
             require(payload.size > 12)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, sessionSecretKey(), GCMParameterSpec(128, payload.copyOfRange(0, 12)))
-            val parts = String(cipher.doFinal(payload.copyOfRange(12, payload.size)), Charsets.UTF_8).split("\n", limit = 2)
-            if (parts.size == 2 && parts.all { it.isNotBlank() }) parts[0] to parts[1]
+            val parts = String(cipher.doFinal(payload.copyOfRange(12, payload.size)), Charsets.UTF_8).split("\n", limit = 3)
+            if (parts.size == 3 && parts.all { it.isNotBlank() }) Triple(parts[0], parts[1], parts[2])
             else { clearSession(); null }
         } catch (_: Exception) {
             clearSession()
             null
         }
     }
+
+    fun clearSession() { prefs.edit().remove("auth_session_v2").remove("auth_session_v1").apply() }
 
     fun clearSession() { prefs.edit().remove("auth_session_v1").apply() }
 
