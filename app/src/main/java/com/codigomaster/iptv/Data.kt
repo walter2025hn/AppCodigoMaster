@@ -129,6 +129,11 @@ class Store(context: Context) {
         get() = prefs.getString("engine", "AUTO").orEmpty().ifBlank { "AUTO" }
         set(value) { prefs.edit().putString("engine", value).apply() }
 
+    /** Mejora visual ligera activada desde el menú del reproductor. */
+    var picture4kEnabled: Boolean
+        get() = prefs.getBoolean("picture_4k_enabled", false)
+        set(value) { prefs.edit().putBoolean("picture_4k_enabled", value).apply() }
+
     /** Colores de apariencia personalizados (ARGB hexadecimal). */
     var backgroundColor: String
         get() = prefs.getString("appearance_bg", "#FF05070D").orEmpty()
