@@ -499,6 +499,21 @@ private fun normalize(value: String): String =
     java.text.Normalizer.normalize(value.lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD)
         .replace(DIACRITICS, "")
 
+fun searchRelevance(name: String, group: String, query: String): Int {
+    val title = normalize(name)
+    val foldedGroup = normalize(group)
+    val tokens = normalize(query).split(TOKEN_SPLIT).filter { it.isNotBlank() }
+    if (tokens.isEmpty() || !tokens.all { title.contains(it) || foldedGroup.contains(it) }) return 0
+    val phrase = tokens.joinToString(" ")
+    return when {
+        title == phrase -> 1200
+        title.startsWith(phrase) -> 1000
+        tokens.all { token -> title.split(TOKEN_SPLIT).any { it.startsWith(token) } } -> 850
+        tokens.all { title.contains(it) } -> 700
+        else -> 250
+    } + tokens.sumOf { (if (title.contains(it)) 30 else 0) + (if (foldedGroup.contains(it)) 5 else 0) }
+}
+
 private val episodeRegex =
     Regex("""(?i)^(.*?)[ ._\-]*(?:S\d{1,2}[ ._\-]*E\d{1,3}|\d{1,2}x\d{1,3}|T\d{1,2}[ ._\-]*E\d{1,3}|(?:temporada|season)\s*\d+\s*(?:cap[ií]tulo|episodio|episode|ep)\s*\d+)(.*)$""")
 private val seasonOnlyRegex = Regex("""(?i)^(.*?)[ ._\-]*(?:temporada|season)\s*\d+.*$""")
