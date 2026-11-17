@@ -47,6 +47,22 @@ data class Series(val title: String, val episodes: List<Entry>, val poster: Stri
 
 data class Catalog(val live: List<Entry>, val movies: List<Entry>, val series: List<Series>)
 
+/** Año explícito del contenido en el nombre, grupo o atributos M3U. */
+private val CONTENT_YEAR = Regex("""\b(19\d{2}|20\d{2})\b""")
+fun contentYear(name: String, group: String = "", attributes: String = ""): Int =
+    CONTENT_YEAR.find("$name $group $attributes")?.groupValues?.getOrNull(1)?.toIntOrNull()
+        ?.takeIf { it in 1900..2035 } ?: 0
+
+fun newestMovies(items: List<Entry>): List<Entry> =
+    items.withIndex().sortedWith(compareByDescending<IndexedValue<Entry>> {
+        contentYear(it.value.name, it.value.group, it.value.attributes)
+    }.thenBy { it.index }).map { it.value }
+
+fun newestSeries(items: List<Series>): List<Series> =
+    items.withIndex().sortedWith(compareByDescending<IndexedValue<Series>> {
+        contentYear(it.value.title, it.value.group)
+    }.thenBy { it.index }).map { it.value }
+
 enum class Kind { LIVE, MOVIE, SERIES, OTHER }
 
 /** Persistencia local: lista en caché, favoritos, historial, posición de reproducción y ajustes. */
