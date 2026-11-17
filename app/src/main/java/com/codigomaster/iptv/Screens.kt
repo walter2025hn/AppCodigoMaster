@@ -77,8 +77,12 @@ fun HomeScreen(
         out
     }
     val liveRail = remember(catalog) { catalog.live.take(24) }
-    val movieRail = remember(catalog) { catalog.movies.take(24) }
-    val seriesRail = remember(catalog) { catalog.series.take(24) }
+    val orderedMovies = remember(catalog) { newestMovies(catalog.movies) }
+    val recentMovies2026 = remember(catalog) { orderedMovies.filter { contentYear(it.name, it.group, it.attributes) == 2026 }.take(24) }
+    val movieRail = remember(catalog) { orderedMovies.take(24) }
+    val orderedSeries = remember(catalog) { newestSeries(catalog.series) }
+    val recentSeries2026 = remember(catalog) { orderedSeries.filter { contentYear(it.title, it.group) == 2026 }.take(24) }
+    val seriesRail = remember(catalog) { orderedSeries.take(24) }
     val genreRails = remember(catalog.movies) {
         catalog.movies.groupBy { it.group }.entries.filter { it.value.size >= 6 && it.key != "Sin categoría" }
             .sortedByDescending { it.value.size }.take(4).map { it.key to it.value.take(20) }
@@ -111,6 +115,12 @@ fun HomeScreen(
                 }
             }
         }
+        if (recentMovies2026.isNotEmpty()) item(key = "movies-2026") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle("Estrenos 2026", "${recentMovies2026.size} películas")
+                MovieRail(recentMovies2026, cardWidth, onPlay)
+            }
+        }
         if (catalog.movies.isNotEmpty()) item(key = "movies") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle("Películas", "${catalog.movies.size} títulos", "Ver todas") { onSection(Section.MOVIES) }
@@ -123,6 +133,12 @@ fun HomeScreen(
                     SectionTitle(genre)
                     MovieRail(list, cardWidth, onPlay)
                 }
+            }
+        }
+        if (recentSeries2026.isNotEmpty()) item(key = "series-2026") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle("Series 2026", "${recentSeries2026.size} series")
+                SeriesRail(recentSeries2026, cardWidth, onSeries)
             }
         }
         if (catalog.series.isNotEmpty()) item(key = "series") {
@@ -285,7 +301,7 @@ fun LiveScreen(
 ) {
     var group by remember { mutableStateOf<String?>(null) }
     val groups = remember(items) { groupCounts(items) }
-    val shown = remember(items, group) { if (group == null) items else items.filter { it.group == group } }
+    val shown = remember(items, group) { val ordered = newestMovies(items); if (group == null) ordered else ordered.filter { it.group == group } }
     Column(Modifier.fillMaxSize()) {
         GroupChips(groups, group) { group = it }
         if (shown.isEmpty()) EmptyState(Icons.Filled.LiveTv, "Sin canales", "No hay canales que coincidan con tu búsqueda.")
@@ -308,7 +324,7 @@ fun LiveScreen(
 fun MoviesScreen(items: List<Entry>, favorites: Set<String>, wide: Boolean, onPlay: (PlayRequest) -> Unit) {
     var group by remember { mutableStateOf<String?>(null) }
     val groups = remember(items) { groupCounts(items) }
-    val shown = remember(items, group) { if (group == null) items else items.filter { it.group == group } }
+    val shown = remember(items, group) { val ordered = newestSeries(items); if (group == null) ordered else ordered.filter { it.group == group } }
     Column(Modifier.fillMaxSize()) {
         GroupChips(groups, group) { group = it }
         if (shown.isEmpty()) EmptyState(Icons.Filled.Movie, "Sin películas", "No hay películas que coincidan con tu búsqueda.")
