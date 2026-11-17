@@ -107,8 +107,6 @@ class Store(context: Context) {
 
     fun clearSession() { prefs.edit().remove("auth_session_v2").remove("auth_session_v1").apply() }
 
-    fun clearSession() { prefs.edit().remove("auth_session_v1").apply() }
-
     private fun sessionSecretKey(): SecretKey {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (keyStore.getKey("cm_client_session_v1", null) as? SecretKey)?.let { return it }
