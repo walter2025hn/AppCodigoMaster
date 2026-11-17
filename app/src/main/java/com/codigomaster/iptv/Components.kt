@@ -37,6 +37,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import android.app.ActivityManager
+import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -135,15 +137,21 @@ fun Poster(
 ) {
     val context = LocalContext.current
     val tv = LocalTv.current
-    val request = remember(url, tv, decodeWidth, decodeHeight) {
+    // Dispositivos con poca RAM: decodificar pósteres más pequeños y evitar animaciones de entrada.
+    val lowRam = remember(context) {
+        (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
+    }
+    val targetWidth = if (lowRam) minOf(decodeWidth, 200) else decodeWidth
+    val targetHeight = if (lowRam) minOf(decodeHeight, 300) else decodeHeight
+    val request = remember(url, tv, lowRam, targetWidth, targetHeight) {
         ImageRequest.Builder(context)
             .data(url.takeIf { it.startsWith("http://") || it.startsWith("https://") })
-            .size(CoilSize(decodeWidth, decodeHeight))
+            .size(CoilSize(targetWidth, targetHeight))
             .precision(Precision.INEXACT)
             .allowRgb565(true)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCachePolicy(CachePolicy.ENABLED)
-            .crossfade(if (tv) 0 else 160)
+            .crossfade(if (tv || lowRam) 0 else 160)
             .build()
     }
     Box(modifier.background(Cm.PosterFallback), contentAlignment = Alignment.Center) {
