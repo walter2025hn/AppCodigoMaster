@@ -44,6 +44,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -104,6 +105,7 @@ private fun CodigoMasterApp(store: Store) {
         Surface(Modifier.fillMaxSize(), color = Cm.Bg) {
             var username by remember { mutableStateOf("") }
             var password by remember { mutableStateOf("") }
+            var passwordVisible by remember { mutableStateOf(false) }
             Column(
                 Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -129,7 +131,16 @@ private fun CodigoMasterApp(store: Store) {
                 OutlinedTextField(
                     value = password, onValueChange = { password = it },
                     label = { Text("Contraseña") }, singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                tint = Cm.Muted
+                            )
+                        }
+                    },
                     modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()
                 )
                 Spacer(Modifier.height(12.dp))
