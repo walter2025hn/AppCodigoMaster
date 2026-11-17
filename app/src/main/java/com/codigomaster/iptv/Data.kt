@@ -436,14 +436,16 @@ fun classify(e: Entry): Kind {
     val liveGroup = groupTokens.any { it in LIVE_GROUP_TOKENS } || group.contains("en vivo") || group.contains("24/7")
     val seriesGroup = groupTokens.any { it in SERIES_GROUP_TOKENS }
     val movieGroup = groupTokens.any { it in MOVIE_GROUP_TOKENS } || VOD_URL_PARTS.any { path.contains(it) }
+    // Una categoría explícita de telenovelas/series tiene prioridad sobre etiquetas genéricas
+    // como "canales" que algunos proveedores añaden al nombre del grupo.
+    if (seriesGroup) return Kind.SERIES
     if (liveGroup && !isVodFile) return Kind.LIVE
 
     // 6) Nombre de canal conocido o tvg-id (las películas casi nunca traen tvg-id) con stream en vivo.
     if (!isVodFile && looksLikeChannelName(name) && !movieGroup && !seriesGroup) return Kind.LIVE
     if (streamLooksLive && e.tvgId.isNotBlank() && !movieGroup && !seriesGroup) return Kind.LIVE
 
-    // 7) Grupos de series / películas.
-    if (seriesGroup) return Kind.SERIES
+    // 7) Grupos de películas.
     if (movieGroup || isVodFile) return Kind.MOVIE
 
     // 8) Sin pistas claras: un stream en vivo sin año es un canal; con año/calidad/género es película.
@@ -457,7 +459,12 @@ fun classify(e: Entry): Kind {
 }
 
 private val ANIME_WORDS = setOf("anime", "animacion japonesa", "animacion japonesa", "manga", "otaku", "donghua")
-private val KIDS_WORDS = setOf("kids", "kid", "infantil", "infantiles", "ninos", "ninas", "preescolar", "cartoons", "cartoon", "disney junior", "nick jr")
+private val KIDS_WORDS = setOf(
+    "kids", "kid", "infantil", "infantiles", "ninos", "ninas", "preescolar", "cartoons", "cartoon",
+    "disney junior", "nick jr", "spongebob", "bob esponja", "bluey", "paw patrol", "peppa pig",
+    "mickey mouse", "baby shark", "cocomelon", "dora la exploradora", "pocoyo", "pj masks",
+    "my little pony", "tom y jerry", "looney tunes", "octonautas", "ben 10", "miraculous"
+)
 
 fun isAnimeContent(name: String, group: String): Boolean {
     val value = normalize("$name $group")
@@ -467,8 +474,23 @@ fun isAnimeContent(name: String, group: String): Boolean {
 
 fun isKidsContent(name: String, group: String): Boolean {
     val value = normalize("$name $group")
-    return KIDS_WORDS.any { normalize(it) in value } ||
-        listOf("paw patrol", "peppa pig", "mickey mouse", "baby shark", "cocomelon", "dora la exploradora").any { value.contains(normalize(it)) }
+    return KIDS_WORDS.any { normalize(it) in value }
+}
+
+private val ANIMATION_WORDS = setOf(
+    "animacion", "animada", "animado", "animation", "animated", "cartoon", "cartoons",
+    "dibujos animados", "anime", "kids animation", "infantil animado"
+)
+
+fun isAnimatedContent(name: String, group: String): Boolean {
+    val value = normalize("$name $group")
+    return ANIMATION_WORDS.any { normalize(it) in value } ||
+        listOf(
+            "bob esponja", "spongebob", "bluey", "paw patrol", "peppa pig", "mickey mouse",
+            "baby shark", "cocomelon", "dora la exploradora", "pocoyo", "pj masks",
+            "my little pony", "tom y jerry", "looney tunes", "octonautas", "ben 10",
+            "miraculous", "gravity falls", "phineas y ferb", "hora de aventura"
+        ).any { value.contains(normalize(it)) }
 }
 
 private val DIACRITICS = Regex("\\p{Mn}+")
