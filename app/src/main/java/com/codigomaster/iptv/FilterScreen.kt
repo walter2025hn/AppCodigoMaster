@@ -17,6 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -144,6 +146,13 @@ internal fun FilterScreen(
     }
 
     val type = state.fType
+    val firstFilterFocus = remember { FocusRequester() }
+    LaunchedEffect(items) {
+        if (items != null) {
+            kotlinx.coroutines.delay(160)
+            try { firstFilterFocus.requestFocus() } catch (_: IllegalStateException) { }
+        }
+    }
     val base = remember(items, type) {
         items?.filter {
             when (type) { 0 -> it.entry != null; 1 -> it.series != null; 2 -> it.kids; else -> it.anime }
@@ -179,7 +188,7 @@ internal fun FilterScreen(
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(Modifier.fillMaxWidth().padding(top = (10 * s).dp)) {
-                        FilterRow("Tipo", TYPES, TYPES[type], pill = true) { v ->
+                        FilterRow("Tipo", TYPES, TYPES[type], pill = true, firstChipFocusRequester = firstFilterFocus) { v ->
                             val idx = TYPES.indexOf(v).coerceAtLeast(0)
                             if (idx != state.fType) {
                                 state.fType = idx
@@ -219,7 +228,7 @@ internal fun FilterScreen(
 }
 
 @Composable
-private fun FilterRow(label: String, options: List<String>, selected: String?, pill: Boolean = false, onSelect: (String?) -> Unit) {
+private fun FilterRow(label: String, options: List<String>, selected: String?, pill: Boolean = false, firstChipFocusRequester: FocusRequester? = null, onSelect: (String?) -> Unit) {
     val s = LocalUiScale.current
     Row(Modifier.fillMaxWidth().padding(vertical = (1 * s).dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -229,13 +238,13 @@ private fun FilterRow(label: String, options: List<String>, selected: String?, p
         )
         LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             if (!pill) item { FilterChip("Todos", selected == null, false) { onSelect(null) } }
-            items(options.size) { i -> FilterChip(options[i], selected == options[i], pill) { onSelect(options[i]) } }
+            items(options.size) { i -> FilterChip(options[i], selected == options[i], pill, if (i == 0) firstChipFocusRequester else null) { onSelect(options[i]) } }
         }
     }
 }
 
 @Composable
-private fun FilterChip(text: String, active: Boolean, pill: Boolean, onClick: () -> Unit) {
+private fun FilterChip(text: String, active: Boolean, pill: Boolean, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
     val s = LocalUiScale.current
     val shape = RoundedCornerShape(50)
     Text(
@@ -243,6 +252,7 @@ private fun FilterChip(text: String, active: Boolean, pill: Boolean, onClick: ()
         color = when { active && pill -> Color.White; active -> Red; else -> Color(0xFFC4C4C4) },
         fontSize = (14 * s).sp, maxLines = 1,
         modifier = Modifier
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvClickable(shape, 1.05f) { onClick() }
             .background(if (active && pill) Red else Color.Transparent, shape)
             .padding(horizontal = (12 * s).dp, vertical = (5 * s).dp)
