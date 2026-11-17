@@ -82,6 +82,7 @@ fun DetailScreen(
 
     val meta = rememberMeta(title, kind)
     val image = meta?.poster?.takeIf { it.startsWith("http") } ?: fallbackImage
+    val displayTitle = meta?.displayTitle?.takeIf { it.isNotBlank() } ?: title
     val score = rememberScore(key, title, kind)
     val tmdbOn = LocalRatings.current?.enabled == true
 
@@ -289,7 +290,7 @@ fun DetailScreen(
     if (showMore) AlertDialog(
         onDismissRequest = { showMore = false },
         containerColor = Cm.SurfaceHi, titleContentColor = Cm.Text, textContentColor = Cm.Text,
-        title = { Text(title, fontWeight = FontWeight.Bold) },
+        title = { Text(displayTitle, fontWeight = FontWeight.Bold) },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(overview, fontSize = 14.sp, lineHeight = 20.sp) } },
         confirmButton = { TextButton(onClick = { showMore = false }) { Text("Cerrar", color = Cm.Gold, fontWeight = FontWeight.Bold) } }
     )
