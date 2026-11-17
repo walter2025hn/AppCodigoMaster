@@ -25,6 +25,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
+import androidx.media3.effect.HslAdjustment
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -328,7 +329,13 @@ class ExoController(
 
     override fun setPictureEnhancement(enabled: Boolean) {
         if (released) return
-        exo.setVideoEffects(if (enabled) listOf(Brightness(0.015f), Contrast(0.08f)) else emptyList())
+        exo.setVideoEffects(
+            if (enabled) listOf(
+                Brightness(0.015f),
+                Contrast(0.08f),
+                HslAdjustment.Builder().adjustSaturation(7f).build()
+            ) else emptyList()
+        )
     }
 
     override fun release() {
