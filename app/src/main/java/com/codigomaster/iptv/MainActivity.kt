@@ -483,7 +483,7 @@ private fun CodigoMasterHome(
     // recorría miles de títulos en el hilo de la interfaz y la app se quedaba pegada).
     var q by remember { mutableStateOf("") }
     LaunchedEffect(search) {
-        val next = search.trim()
+        val next = search.trim().uppercase()
         if (next.isEmpty()) q = "" else { delay(300); q = next }
     }
     // El filtrado parental puede recorrer cientos de miles de elementos: nunca bloquear el hilo UI.
@@ -496,9 +496,12 @@ private fun CodigoMasterHome(
         value = if (q.isBlank()) Filtered(displayCatalog.live, displayCatalog.movies, displayCatalog.series)
         else withContext(Dispatchers.Default) {
             Filtered(
-                displayCatalog.live.filter { it.name.contains(q, true) || it.group.contains(q, true) },
-                displayCatalog.movies.filter { it.name.contains(q, true) || it.group.contains(q, true) },
+                displayCatalog.live.filter { it.name.contains(q, true) || it.group.contains(q, true) }
+                    .sortedByDescending { searchRelevance(it.name, it.group, q) },
+                displayCatalog.movies.filter { it.name.contains(q, true) || it.group.contains(q, true) }
+                    .sortedByDescending { searchRelevance(it.name, it.group, q) },
                 displayCatalog.series.filter { it.title.contains(q, true) || it.group.contains(q, true) }
+                    .sortedByDescending { searchRelevance(it.title, it.group, q) }
             )
         }
     }
@@ -586,7 +589,7 @@ private fun CodigoMasterHome(
                         ClassicHome(
                     state = classicState, store = store, catalog = displayCatalog,
                     fLive = fLive, fMovies = fMovies, fSeries = fSeries,
-                    q = q, search = search, onSearch = { search = it },
+                    q = q, search = search, onSearch = { search = it.uppercase() },
                     continueWatching = continueWatching, favorites = favorites,
                     loading = loading, message = message, statusError = statusError,
                     blocker = blocker,
@@ -615,7 +618,7 @@ private fun CodigoMasterHome(
                             )
                         }
                     } else {
-                        TopBar(section, search, { search = it }, loading, wide, ::refresh, { showSettings = true })
+                        TopBar(section, search, { search = it.uppercase() }, loading, wide, ::refresh, { showSettings = true })
                         if (!tv && section == Section.HOME && selectedSeries == null) NativeAdCard()
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             when {
@@ -638,7 +641,7 @@ private fun CodigoMasterHome(
                                     Section.KIDS -> MixedContentScreen(
                                         "Kids",
                                         fMovies.filter { isKidsContent(it.name, it.group) },
-                                        fSeries.filter { isKidsContent(it.title, it.group) },
+                                        fSeries.filter { isKidsContent(it.title, it.group) && isAnimatedContent(it.title, it.group) },
                                         wide, { play = it }, { selectedSeries = it }
                                     )
                                     Section.FAVS -> FavoritesScreen(displayCatalog, favorites, wide, { play = it }, { selectedSeries = it })
