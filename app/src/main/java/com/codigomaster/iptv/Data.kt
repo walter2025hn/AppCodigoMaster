@@ -436,10 +436,11 @@ fun classify(e: Entry): Kind {
     val liveGroup = groupTokens.any { it in LIVE_GROUP_TOKENS } || group.contains("en vivo") || group.contains("24/7")
     val seriesGroup = groupTokens.any { it in SERIES_GROUP_TOKENS }
     val movieGroup = groupTokens.any { it in MOVIE_GROUP_TOKENS } || VOD_URL_PARTS.any { path.contains(it) }
-    // Una categoría explícita de telenovelas/series tiene prioridad sobre etiquetas genéricas
-    // como "canales" que algunos proveedores añaden al nombre del grupo.
-    if (seriesGroup) return Kind.SERIES
+    // Si el grupo dice "Telenovelas" pero la URL tiene formato/ruta de transmisión en vivo,
+    // se trata como canal. Así no terminan canales de telenovelas dentro del catálogo de series.
+    if (seriesGroup && streamLooksLive && !isVodFile) return Kind.LIVE
     if (liveGroup && !isVodFile) return Kind.LIVE
+    if (seriesGroup) return Kind.SERIES
 
     // 6) Nombre de canal conocido o tvg-id (las películas casi nunca traen tvg-id) con stream en vivo.
     if (!isVodFile && looksLikeChannelName(name) && !movieGroup && !seriesGroup) return Kind.LIVE
