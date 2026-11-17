@@ -606,7 +606,7 @@ private fun ColorSwatchRow(title: String, selected: String, colors: List<String>
                 Box(
                     Modifier.size(32.dp).clip(CircleShape).background(color)
                         .then(if (active) Modifier.border(3.dp, Cm.Gold, CircleShape) else Modifier.border(1.dp, Cm.Outline, CircleShape))
-                        .clickable { onSelect(hex) },
+                        .tvClickable(CircleShape, 1.12f) { onSelect(hex) },
                     contentAlignment = Alignment.Center
                 ) {
                     if (active) Icon(Icons.Filled.Check, null, tint = if (color == Color.White) Color.Black else Color.White, modifier = Modifier.size(17.dp))
