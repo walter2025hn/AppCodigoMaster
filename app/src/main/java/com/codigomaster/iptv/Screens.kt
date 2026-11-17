@@ -444,6 +444,7 @@ fun SeriesDetail(
     val score = rememberScore(series.key, series.title, RatingKind.SERIES)
     val seriesMeta = rememberMeta(series.title, RatingKind.SERIES)
     val seriesPoster = seriesMeta?.poster?.takeIf { it.startsWith("http") } ?: series.poster
+    val displaySeriesTitle = seriesMeta?.displayTitle?.takeIf { it.isNotBlank() } ?: series.title
     if (showRate) RateDialog(series.title, series.key, RatingKind.SERIES, { showRate = false }, favorite, onToggleFavorite)
     val seasons = remember(series) { series.episodes.map { episodeNumber(it.name).first }.distinct().sorted() }
     var season by remember(series) { mutableStateOf(seasons.firstOrNull() ?: 0) }
@@ -470,7 +471,7 @@ fun SeriesDetail(
                     Poster(seriesPoster, Modifier.width(if (wide) 150.dp else 104.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(12.dp)), decodeWidth = 360, decodeHeight = 540)
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(series.title, color = Color.White, fontSize = if (wide) 30.sp else 21.sp, fontWeight = FontWeight.Black, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(displaySeriesTitle, color = Color.White, fontSize = if (wide) 30.sp else 21.sp, fontWeight = FontWeight.Black, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (score != null) { RatingBadge(score); Spacer(Modifier.width(8.dp)) }
                             Text("${series.episodes.size} episodios · ${series.group}", color = Color(0xFFC3CCDD), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
