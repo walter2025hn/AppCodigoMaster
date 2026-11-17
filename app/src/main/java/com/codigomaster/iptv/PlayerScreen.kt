@@ -68,9 +68,14 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-fun isTelevision(context: Context): Boolean =
-    (context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION ||
-        context.packageManager.hasSystemFeature("android.software.leanback")
+fun isTelevision(context: Context): Boolean {
+    val pm = context.packageManager
+    val uiModeIsTv = (context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
+    // Algunos TV Box económicos no declaran Leanback, pero sí el tipo de hardware de televisor.
+    val hasTvHardware = pm.hasSystemFeature("android.hardware.type.television")
+    val hasLeanback = pm.hasSystemFeature("android.software.leanback")
+    return uiModeIsTv || hasTvHardware || hasLeanback
+}
 
 private fun formatTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
