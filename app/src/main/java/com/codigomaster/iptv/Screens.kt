@@ -329,8 +329,13 @@ fun LiveScreen(
     onToggleFavorite: (String) -> Unit
 ) {
     var group by remember { mutableStateOf<String?>(null) }
-    val groups = remember(items) { groupCounts(items) }
-    val shown = remember(items, group) { val ordered = newestMovies(items); if (group == null) ordered else ordered.filter { it.group == group } }
+    val listing by produceState(Pair(emptyList<Pair<String, Int>>(), emptyList<Entry>()), items, group) {
+        value = withContext(Dispatchers.Default) {
+            groupCounts(items) to if (group == null) items else items.filter { it.group == group }
+        }
+    }
+    val groups = listing.first
+    val shown = listing.second
     Column(Modifier.fillMaxSize()) {
         GroupChips(groups, group) { group = it }
         if (shown.isEmpty()) EmptyState(Icons.Filled.LiveTv, "Sin canales", "No hay canales que coincidan con tu búsqueda.")
@@ -352,8 +357,14 @@ fun LiveScreen(
 @Composable
 fun MoviesScreen(items: List<Entry>, favorites: Set<String>, wide: Boolean, onPlay: (PlayRequest) -> Unit) {
     var group by remember { mutableStateOf<String?>(null) }
-    val groups = remember(items) { groupCounts(items) }
-    val shown = remember(items, group) { val ordered = newestSeries(items); if (group == null) ordered else ordered.filter { it.group == group } }
+    val listing by produceState(Pair(emptyList<Pair<String, Int>>(), emptyList<Entry>()), items, group) {
+        value = withContext(Dispatchers.Default) {
+            val ordered = newestMovies(items)
+            groupCounts(items) to if (group == null) ordered else ordered.filter { it.group == group }
+        }
+    }
+    val groups = listing.first
+    val shown = listing.second
     Column(Modifier.fillMaxSize()) {
         GroupChips(groups, group) { group = it }
         if (shown.isEmpty()) EmptyState(Icons.Filled.Movie, "Sin películas", "No hay películas que coincidan con tu búsqueda.")
@@ -375,8 +386,13 @@ fun MoviesScreen(items: List<Entry>, favorites: Set<String>, wide: Boolean, onPl
 @Composable
 fun SeriesScreen(items: List<Series>, favorites: Set<String>, wide: Boolean, onSeries: (Series) -> Unit) {
     var group by remember { mutableStateOf<String?>(null) }
-    val groups = remember(items) { seriesGroupCounts(items) }
-    val shown = remember(items, group) { if (group == null) items else items.filter { it.group == group } }
+    val listing by produceState(Pair(emptyList<Pair<String, Int>>(), emptyList<Series>()), items, group) {
+        value = withContext(Dispatchers.Default) {
+            seriesGroupCounts(items) to if (group == null) items else items.filter { it.group == group }
+        }
+    }
+    val groups = listing.first
+    val shown = listing.second
     Column(Modifier.fillMaxSize()) {
         GroupChips(groups, group) { group = it }
         if (shown.isEmpty()) EmptyState(Icons.Filled.Tv, "Sin series", "No hay series que coincidan con tu búsqueda.")
