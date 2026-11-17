@@ -23,6 +23,8 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.effect.Brightness
+import androidx.media3.effect.Contrast
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -78,6 +80,7 @@ abstract class Controller {
     abstract fun selectAudio(id: String)
     abstract fun selectSubtitle(id: String)
     abstract fun selectVideo(id: String)
+    abstract fun setPictureEnhancement(enabled: Boolean)
     abstract fun release()
 
     @Composable
@@ -207,6 +210,8 @@ class ExoController(
                 retryOrFail(error.errorCodeName, isNetwork)
             }
         })
+        // Inicializa la cadena de efectos antes de preparar el primer video.
+        exo.setVideoEffects(emptyList())
         load(resume = false)
     }
 
@@ -320,6 +325,11 @@ class ExoController(
     override fun selectAudio(id: String) = select(C.TRACK_TYPE_AUDIO, id)
     override fun selectSubtitle(id: String) = select(C.TRACK_TYPE_TEXT, id)
     override fun selectVideo(id: String) = select(C.TRACK_TYPE_VIDEO, id)
+
+    override fun setPictureEnhancement(enabled: Boolean) {
+        if (released) return
+        exo.setVideoEffects(if (enabled) listOf(Brightness(0.015f), Contrast(0.08f)) else emptyList())
+    }
 
     override fun release() {
         if (released) return
@@ -464,6 +474,22 @@ class VlcController(
     override fun videoOptions(): List<TrackOpt> = emptyList()
 
     override fun selectVideo(id: String) = Unit
+
+    override fun setPictureEnhancement(enabled: Boolean) {
+        if (released) return
+        try {
+            mp.setAdjustVideo(enabled)
+            if (enabled) {
+                mp.setBrightness(1.02f)
+                mp.setContrast(1.08f)
+                mp.setSaturation(1.06f)
+            } else {
+                mp.setBrightness(1.0f)
+                mp.setContrast(1.0f)
+                mp.setSaturation(1.0f)
+            }
+        } catch (_: Throwable) { }
+    }
 
     override fun subtitleOptions(): List<TrackOpt> {
         if (released) return emptyList()
