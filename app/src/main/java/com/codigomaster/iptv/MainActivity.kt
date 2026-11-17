@@ -82,15 +82,24 @@ private fun CodigoMasterApp(store: Store) {
     val restoredSession = remember(store) { store.savedSession() }
     var accessToken by remember { mutableStateOf(restoredSession?.first.orEmpty()) }
     var deviceKey by remember { mutableStateOf(restoredSession?.second.orEmpty()) }
+    var refreshToken by remember { mutableStateOf(restoredSession?.third.orEmpty()) }
     var busy by remember { mutableStateOf(false) }
     var loginError by remember { mutableStateOf("") }
 
     if (accessToken.isNotBlank() && deviceKey.isNotBlank()) {
-        CodigoMasterHome(store, accessToken, deviceKey) {
-            store.clearSession()
-            accessToken = ""
-            deviceKey = ""
-        }
+        CodigoMasterHome(
+            store, accessToken, deviceKey, refreshToken,
+            onSessionRefreshed = { nextAccess, nextRefresh ->
+                accessToken = nextAccess
+                refreshToken = nextRefresh
+            },
+            onSessionInvalid = {
+                store.clearSession()
+                accessToken = ""
+                deviceKey = ""
+                refreshToken = ""
+            }
+        )
     } else {
         Surface(Modifier.fillMaxSize(), color = Cm.Bg) {
             var username by remember { mutableStateOf("") }
@@ -132,9 +141,10 @@ private fun CodigoMasterApp(store: Store) {
                             scope.launch {
                                 try {
                                     val session = loginClient(context, username, password)
-                                    store.saveSession(session.accessToken, session.deviceKey)
+                                    store.saveSession(session.accessToken, session.deviceKey, session.refreshToken)
                                     accessToken = session.accessToken
                                     deviceKey = session.deviceKey
+                                    refreshToken = session.refreshToken
                                 } catch (e: Exception) {
                                     loginError = e.message ?: "No se pudo iniciar sesión."
                                 } finally {
@@ -158,7 +168,14 @@ private fun CodigoMasterApp(store: Store) {
 }
 
 @Composable
-private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: String, onSessionInvalid: () -> Unit) {
+private fun CodigoMasterHome(
+    store: Store,
+    accessToken: String,
+    deviceKey: String,
+    refreshToken: String,
+    onSessionRefreshed: (String, String) -> Unit,
+    onSessionInvalid: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val tv = remember(context) { isTelevision(context) }
@@ -365,12 +382,18 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(accessToken, refreshToken) {
         var wasBlocked = true
         var previousContentEnabled: Boolean? = null
         while (true) {
             try {
-                val control = loadClientStatus(context, accessToken, deviceKey, store.selectedPlaylistId)
+                val refreshed = refreshClientSessionIfNeeded(accessToken, refreshToken)
+                val tokenForCheck = if (refreshed != null) {
+                    store.saveSession(refreshed.accessToken, deviceKey, refreshed.refreshToken)
+                    onSessionRefreshed(refreshed.accessToken, refreshed.refreshToken)
+                    refreshed.accessToken
+                } else accessToken
+                val control = loadClientStatus(context, tokenForCheck, deviceKey, store.selectedPlaylistId)
                 controlChecked = true
                 remoteError = false
                 remoteBlocked = control.isSuspended
