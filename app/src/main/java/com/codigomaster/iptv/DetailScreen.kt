@@ -76,11 +76,12 @@ fun DetailScreen(
     val key = movie?.url ?: series!!.key
     val title = movie?.name ?: series!!.title
     val group = movie?.group ?: series!!.group
-    val image = movie?.logo ?: series!!.poster
+    val fallbackImage = movie?.logo ?: series!!.poster
     val kind = if (movie != null) RatingKind.MOVIE else RatingKind.SERIES
     val favorite = key in favorites
 
     val meta = rememberMeta(title, kind)
+    val image = meta?.poster?.takeIf { it.startsWith("http") } ?: fallbackImage
     val score = rememberScore(key, title, kind)
     val tmdbOn = LocalRatings.current?.enabled == true
 
