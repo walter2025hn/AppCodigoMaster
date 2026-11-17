@@ -463,8 +463,11 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
         val next = search.trim()
         if (next.isEmpty()) q = "" else { delay(300); q = next }
     }
-    val displayCatalog = remember(catalog, parentalEnabled) {
-        if (parentalEnabled) catalog.withoutAdultContent() else catalog
+    // El filtrado parental puede recorrer cientos de miles de elementos: nunca bloquear el hilo UI.
+    val displayCatalog by produceState(catalog, catalog, parentalEnabled) {
+        value = if (parentalEnabled) withContext(Dispatchers.Default) {
+            catalog.withoutAdultContent()
+        } else catalog
     }
     val filtered by produceState(Filtered(displayCatalog.live, displayCatalog.movies, displayCatalog.series), displayCatalog, q) {
         value = if (q.isBlank()) Filtered(displayCatalog.live, displayCatalog.movies, displayCatalog.series)
@@ -479,9 +482,18 @@ private fun CodigoMasterHome(store: Store, accessToken: String, deviceKey: Strin
     val fLive = filtered.live
     val fMovies = filtered.movies
     val fSeries = filtered.series
-    val continueWatching = remember(recents, entries, parentalEnabled) {
-        val byUrl = entries.filterNot { parentalEnabled && isAdultContent(it.name, it.group, it.attributes) }.associateBy { it.url }
-        recents.mapNotNull { byUrl[it] }.filter { store.position(it.url) > 10_000 }.take(12)
+    // Solo indexa los elementos del historial, no las 256 mil entradas del catálogo.
+    val continueWatching by produceState(emptyList<Entry>(), recents, entries, parentalEnabled) {
+        value = withContext(Dispatchers.Default) {
+            val recentUrls = recents.toHashSet()
+            val byUrl = entries.asSequence()
+                .filter { it.url in recentUrls }
+                .filterNot { parentalEnabled && isAdultContent(it.name, it.group, it.attributes) }
+                .associateBy { it.url }
+            recents.mapNotNull { byUrl[it] }
+                .filter { store.position(it.url) > 10_000 }
+                .take(12)
+        }
     }
     val catalogEmpty = displayCatalog.live.isEmpty() && displayCatalog.movies.isEmpty() && displayCatalog.series.isEmpty()
 
