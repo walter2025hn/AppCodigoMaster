@@ -143,7 +143,7 @@ internal fun SearchScreen(catalog: Catalog, onOpen: (ShowItem) -> Unit, onClose:
                             }
                         }
                         if (!numbers) Row(Modifier.weight(1f).fillMaxWidth()) {
-                            LAST_ROW.forEach { k -> Key(1f, { text += k.lowercase(Locale.ROOT) }) { KeyLabel(k) } }
+                            LAST_ROW.forEach { k -> Key(1f, { text += k.uppercase(Locale.ROOT) }) { KeyLabel(k) } }
                             Key(2f, { if (text.isNotEmpty() && !text.endsWith(" ")) text += " " }) {
                                 Box(
                                     Modifier.fillMaxWidth().height((20 * s).dp).padding(horizontal = (10 * s).dp).drawBehind {
