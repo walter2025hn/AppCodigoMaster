@@ -100,19 +100,43 @@ fun DetailScreen(
         }
     }
 
-    // ── «Quizás te guste»: misma categoría primero, luego relleno estable ──
-    val recs = remember(catalog, key) {
-        val same = catalog.movies.filter { it.group == group && it.url != key }.map { it.toShow() } +
-            catalog.series.filter { it.group == group && it.key != key }.map { it.toShow() }
-        val seen = same.mapTo(HashSet()) { it.key }
-        val out = ArrayList<ShowItem>(same.take(20))
-        if (out.size < 14) {
-            val rnd = Random(key.hashCode().toLong())
-            val extra = (catalog.movies.filter { it.logo.startsWith("http") }.shuffled(rnd).take(20).map { it.toShow() } +
-                catalog.series.filter { it.poster.startsWith("http") }.shuffled(rnd).take(10).map { it.toShow() }).shuffled(rnd)
-            for (x in extra) { if (out.size >= 20) break; if (x.key != key && seen.add(x.key)) out += x }
+    // ── Recomendaciones por similitud: películas recomiendan solo películas. ──
+    val recs = remember(catalog, key, title, group, movie != null) {
+        fun words(value: String): Set<String> =
+            value.lowercase(Locale.ROOT).split(Regex("[^\\p{L}\\p{N}]+"))
+                .filter { it.length > 2 && it !in setOf("the", "and", "con", "para", "una", "uno", "del", "los", "las", "por", "movie", "pelicula", "peliculas", "vod") }
+                .toSet()
+        val wantedGenres = words(group)
+        val wantedTitle = words(title)
+        if (movie != null) {
+            catalog.movies.asSequence()
+                .filter { it.url != key && it.logo.startsWith("http") }
+                .map { candidate ->
+                    val genreWords = words(candidate.group)
+                    val titleWords = words(candidate.name)
+                    val sharedGenres = wantedGenres.intersect(genreWords).size
+                    val sharedTitle = wantedTitle.intersect(titleWords).size
+                    val score = (if (candidate.group.equals(group, true)) 1000 else 0) +
+                        sharedGenres * 120 + sharedTitle * 35
+                    score to candidate
+                }
+                .sortedByDescending { it.first }
+                .take(20)
+                .map { it.second.toShow() }
+                .toList()
+        } else {
+            catalog.series.asSequence()
+                .filter { it.key != key && it.poster.startsWith("http") }
+                .map { candidate ->
+                    val sharedGenres = wantedGenres.intersect(words(candidate.group)).size
+                    val sharedTitle = wantedTitle.intersect(words(candidate.title)).size
+                    ((if (candidate.group.equals(group, true)) 1000 else 0) + sharedGenres * 120 + sharedTitle * 35) to candidate
+                }
+                .sortedByDescending { it.first }
+                .take(20)
+                .map { it.second.toShow() }
+                .toList()
         }
-        out.toList()
     }
 
     var showMore by remember(key) { mutableStateOf(false) }
