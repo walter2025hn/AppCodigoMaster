@@ -475,21 +475,9 @@ class VlcController(
 
     override fun selectVideo(id: String) = Unit
 
-    override fun setPictureEnhancement(enabled: Boolean) {
-        if (released) return
-        try {
-            mp.setAdjustVideo(enabled)
-            if (enabled) {
-                mp.setBrightness(1.02f)
-                mp.setContrast(1.08f)
-                mp.setSaturation(1.06f)
-            } else {
-                mp.setBrightness(1.0f)
-                mp.setContrast(1.0f)
-                mp.setSaturation(1.0f)
-            }
-        } catch (_: Throwable) { }
-    }
+    // libVLC Android no expone controles de ajuste de imagen en esta API.
+    // La mejora GPU se aplica en ExoPlayer; VLC mantiene la imagen original.
+    override fun setPictureEnhancement(enabled: Boolean) = Unit
 
     override fun subtitleOptions(): List<TrackOpt> {
         if (released) return emptyList()
