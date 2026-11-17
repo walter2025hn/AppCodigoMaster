@@ -115,7 +115,7 @@ class RatingsRepo(private val store: Store) {
                 val a = o.optJSONArray(k) ?: return emptyList()
                 return (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }
             }
-            Meta(o.optString("o"), list("g"), o.optString("d"), list("c"), o.optString("k"), o.optString("t"), o.optString("n"), o.optString("b"), o.optString("p"))
+            Meta(o.optString("o"), list("g"), o.optString("d"), list("c"), o.optString("k"), o.optString("t"), o.optString("n"), o.optString("b"), o.optString("p"), o.optString("h"))
         } catch (_: Exception) { null }
     }
 
@@ -140,10 +140,10 @@ class RatingsRepo(private val store: Store) {
                 val candidateTitle = candidate.str(if (tv) "name" else "title").ifBlank {
                     candidate.str(if (tv) "original_name" else "original_title")
                 }
-                titleSimilarity(title, candidateTitle) >= 0.62 &&
+                titleSimilarity(title, candidateTitle) >= 0.88 &&
                     (y == null || candidate.str(if (tv) "first_air_date" else "release_date").take(4).isBlank() ||
                         candidate.str(if (tv) "first_air_date" else "release_date").take(4) == y ||
-                        titleSimilarity(title, candidateTitle) >= 0.90)
+                        titleSimilarity(title, candidateTitle) >= 0.94)
             }.sortedByDescending { it.second }
             if (ranked.isNotEmpty()) { selected = ranked.first().first; break }
         }
@@ -176,6 +176,7 @@ class RatingsRepo(private val store: Store) {
             .put("n", d.str(if (tv) "original_name" else "original_title"))
             .put("b", if (back.isNotBlank()) "https://image.tmdb.org/t/p/w780$back" else "")
             .put("p", d.str("poster_path").let { path -> if (path.isNotBlank()) "https://image.tmdb.org/t/p/w500$path" else "" })
+            .put("h", d.str(if (tv) "name" else "title").ifBlank { d.str(if (tv) "original_name" else "original_title") })
             .toString()
     }
 
@@ -329,7 +330,8 @@ data class Meta(
     val date: String,
     val original: String,
     val backdrop: String,
-    val poster: String = ""
+    val poster: String = "",
+    val displayTitle: String = ""
 )
 
 private fun JSONObject.str(k: String): String = if (isNull(k)) "" else optString(k)
