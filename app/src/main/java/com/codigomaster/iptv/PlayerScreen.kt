@@ -200,6 +200,8 @@ fun PlayerScreen(
     var visible by remember { mutableStateOf(true) }
     var poke by remember { mutableIntStateOf(0) }
     var showMenu by remember { mutableStateOf(request.openMenu) }
+    var picture4k by remember { mutableStateOf(store.picture4kEnabled) }
+    LaunchedEffect(controller, picture4k) { controller?.setPictureEnhancement(picture4k) }
     var aspect by remember { mutableStateOf(AspectMode.FIT) }
     val playing = controller?.state?.playing == true
 
@@ -346,6 +348,8 @@ fun PlayerScreen(
             controller = controller,
             engine = engine,
             aspect = aspect,
+            picture4k = picture4k,
+            onPicture4k = { enabled -> picture4k = enabled; store.picture4kEnabled = enabled },
             onEngine = {
                 if (it != engine) { tried = emptySet(); failure = null; engine = it; notice = "Motor: ${it.label}" }
                 showMenu = false
@@ -592,6 +596,8 @@ private fun PlayerMenu(
     controller: Controller,
     engine: EngineType,
     aspect: AspectMode,
+    picture4k: Boolean,
+    onPicture4k: (Boolean) -> Unit,
     onEngine: (EngineType) -> Unit,
     onAspect: (AspectMode) -> Unit,
     onDismiss: () -> Unit
@@ -614,6 +620,17 @@ private fun PlayerMenu(
                         if (e == EngineType.EXO) "Reproductor 1 · ExoPlayer" else "Reproductor 2 · VLC",
                         e == engine
                     ) { onEngine(e) }
+                }
+                MenuHeader("Calidad de imagen")
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Calidad 4K", color = if (picture4k) Cm.Gold else Cm.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Activa la mejora visual para dar más nitidez y realce de color", color = Cm.Muted, fontSize = 11.sp)
+                    }
+                    Switch(checked = picture4k, onCheckedChange = onPicture4k, colors = SwitchDefaults.colors(checkedThumbColor = Cm.Gold, checkedTrackColor = Cm.Gold.copy(alpha = 0.45f)))
                 }
                 MenuHeader("Pantalla")
                 AspectMode.values().forEach { a -> MenuRow(a.label, a == aspect) { onAspect(a) } }
