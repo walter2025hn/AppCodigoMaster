@@ -224,6 +224,9 @@ fun PosterCard(
     val shape = RoundedCornerShape(12.dp)
     var showRate by remember { mutableStateOf(false) }
     val score = if (ratingKey != null) rememberScore(ratingKey, title, ratingKind) else null
+    // Para series, prioriza el póster oficial encontrado en TMDB; conserva el logo M3U como respaldo.
+    val seriesMeta = if (ratingKind == RatingKind.SERIES) rememberMeta(title, RatingKind.SERIES) else null
+    val displayImage = seriesMeta?.poster?.takeIf { it.startsWith("http") } ?: image
     Column(modifier) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(2f / 3f)
@@ -232,7 +235,7 @@ fun PosterCard(
                     else Modifier.tvClickable(shape, 1.06f, onClick)
                 )
         ) {
-            Poster(image, Modifier.fillMaxSize())
+            Poster(displayImage, Modifier.fillMaxSize())
             if (score != null) RatingBadge(score, Modifier.align(Alignment.TopEnd).padding(6.dp))
             Box(
                 Modifier.fillMaxWidth().height(70.dp).align(Alignment.BottomCenter)
