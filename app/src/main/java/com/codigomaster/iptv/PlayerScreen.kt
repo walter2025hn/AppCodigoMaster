@@ -112,7 +112,10 @@ fun PlayerScreen(
         if (other !in newTried) {
             notice = "Cambiando al motor ${other.label}…"
             engine = other
-        } else failure = msg
+        } else {
+            if (store.picture4kEnabled && other == EngineType.VLC) notice = "VLC no admite este filtro; se continúa con la imagen original."
+            failure = msg
+        }
     }
 
     val controller: Controller? = remember(entry.url, engine, reload) {
@@ -349,7 +352,16 @@ fun PlayerScreen(
             engine = engine,
             aspect = aspect,
             picture4k = picture4k,
-            onPicture4k = { enabled -> picture4k = enabled; store.picture4kEnabled = enabled },
+            onPicture4k = { enabled ->
+                picture4k = enabled
+                store.picture4kEnabled = enabled
+                if (enabled && engine == EngineType.VLC) {
+                    tried = emptySet()
+                    failure = null
+                    engine = EngineType.EXO
+                    notice = "Activando mejora visual con ExoPlayer…"
+                }
+            },
             onEngine = {
                 if (it != engine) { tried = emptySet(); failure = null; engine = it; notice = "Motor: ${it.label}" }
                 showMenu = false
@@ -628,7 +640,7 @@ private fun PlayerMenu(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("Calidad 4K", color = if (picture4k) Cm.Gold else Cm.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Activa la mejora visual para dar más nitidez y realce de color", color = Cm.Muted, fontSize = 11.sp)
+                        Text("Activa un filtro GPU de contraste y color. No convierte la fuente a 4K real ni usa IA.", color = Cm.Muted, fontSize = 11.sp)
                     }
                     Switch(checked = picture4k, onCheckedChange = onPicture4k, colors = SwitchDefaults.colors(checkedThumbColor = Cm.Gold, checkedTrackColor = Cm.Gold.copy(alpha = 0.45f)))
                 }
