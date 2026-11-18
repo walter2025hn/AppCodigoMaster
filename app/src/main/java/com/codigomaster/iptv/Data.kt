@@ -543,7 +543,17 @@ private fun buildSeries(seriesEntries: List<Entry>): List<Series> {
             ?.replace(TRAILING_SEPARATORS, "")?.trim()?.ifBlank { first.name }
             ?: seasonOnlyRegex.find(first.name)?.groupValues?.get(1)?.replace(TRAILING_SEPARATORS, "")?.trim()?.ifBlank { first.name }
             ?: first.name
-        Series(title, sorted, sorted.firstOrNull { it.logo.isNotBlank() }?.logo.orEmpty(), first.group)
+        // El póster de la serie debe ser el logo compartido por más episodios,
+        // no la miniatura particular del primer capítulo.
+        val poster = sorted.asSequence()
+            .map { it.logo.trim() }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+            .orEmpty()
+        Series(title, sorted, poster, first.group)
     }.sortedBy { it.title.lowercase(Locale.ROOT) }.distinctBy { it.key }
 }
 
